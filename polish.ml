@@ -51,6 +51,7 @@ type program = block
 (***********************************************************************)
 
 module ENV = Map.Make(String);;
+let env = ref ENV.empty
 
 let is_numeric str = 
   try
@@ -59,6 +60,7 @@ let is_numeric str =
   with Failure _ -> false
 ;;
 
+let var_exists name = ENV.mem name !env;;
 
 let rec read_file channel current = 
   try
@@ -102,6 +104,7 @@ let get_expression exp =
                      | h :: [] -> printf "Exception: Not enought arguments for operator %% (required 2, found 1)"; exit 1
                      | h1 :: h2 :: [] -> [Op(Mul, h1, h2)]
                      | h1 :: h2 :: q -> [Op(Mod, h1, h2)] @ q)
+    | h :: q -> if not (var_exists h) then begin printf "Variable %s referenced before assignment" h; exit 1; end else Var(h) :: auxiliaire q
   in check_expression_validity (auxiliaire exp)
 ;;
 
