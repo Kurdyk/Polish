@@ -53,6 +53,10 @@ type program = block
 module ENV = Map.Make(String);;
 let env = ref ENV.empty
 
+let exclusion_names = ["READ"; "PRINT"; "IF"; "ELSE"; "WHILE"; "COMMENT";
+                       ":="; "+"; "-"; "*"; "/"; "%"; 
+                       "="; "<>"; "<"; "<="; ">"; ">="]
+
 let is_numeric str = 
   try
     let _ = int_of_string str in
@@ -64,7 +68,10 @@ let var_exists name = ENV.mem name !env;;
 
 let get_variable name = if ENV.mem name !env then ENV.find name !env else begin printf "Variable %s referenced before assignement" name; exit 1; end;;
 
-let set_variable name value = ENV.add name value !env;;
+let check_variable_name name = if List.mem name exclusion_names then begin printf "Cannot name variable %s: forbidden name (reserved keyword)" name; exit 1; end else if is_numeric (String.make 1 (String.get name 0)) then begin printf "Cannot name variable %s: invalid name" name; exit 1; end;;
+
+let set_variable name value = check_variable_name name; env := ENV.add name value !env;;
+
 
 let rec read_file channel current = 
   try
@@ -115,7 +122,10 @@ let get_expression exp =
 
 let rec convert_line line = match line with 
   | "PRINT"::r -> Print(get_expression (purifier r))
+  | "READ" :: n :: [] -> Read(n)
+  | "READ" :: q -> printf "Syntax error: READ method does not allow multiple parameters"; exit 1;
   | h :: ":=" :: q -> Set(h, get_expression (purifier q)) (* cette ligne doit être à la fin du match*)
+  | _ -> Read("a")
 ;;
 
 
@@ -128,6 +138,7 @@ let rec read_lines lines = match lines with
 let read_polish (filename:string) : program =
   let ic = open_in filename in 
     read_file ic 0;;
+
 
 
 
