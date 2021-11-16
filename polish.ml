@@ -62,6 +62,10 @@ let is_numeric str =
 
 let var_exists name = ENV.mem name !env;;
 
+let get_variable name = if ENV.mem name !env then ENV.find name !env else begin printf "Variable %s referenced before assignement" name; exit 1; end;;
+
+let set_variable name value = ENV.add name value !env;;
+
 let rec read_file channel current = 
   try
     let line = input_line channel in
@@ -97,19 +101,21 @@ let get_expression exp =
     | "/" :: q -> (let retour = auxiliaire q in match retour with 
                      | [] -> printf "Exception: Not enought arguments for operator / (required 2, found 0)"; exit 1
                      | h :: [] -> printf "Exception: Not enought arguments for operator / (required 2, found 1)"; exit 1
-                     | h1 :: h2 :: [] -> [Op(Mul, h1, h2)]
+                     | h1 :: h2 :: [] -> [Op(Div, h1, h2)]
                      | h1 :: h2 :: q -> [Op(Div, h1, h2)] @ q)
     | "%" :: q -> (let retour = auxiliaire q in match retour with 
                      | [] -> printf "Exception: Not enought arguments for operator %% (required 2, found 0)"; exit 1
                      | h :: [] -> printf "Exception: Not enought arguments for operator %% (required 2, found 1)"; exit 1
-                     | h1 :: h2 :: [] -> [Op(Mul, h1, h2)]
+                     | h1 :: h2 :: [] -> [Op(Mod, h1, h2)]
                      | h1 :: h2 :: q -> [Op(Mod, h1, h2)] @ q)
     | h :: q -> if not (var_exists h) then begin printf "Variable %s referenced before assignment" h; exit 1; end else Var(h) :: auxiliaire q
   in check_expression_validity (auxiliaire exp)
 ;;
 
+
 let rec convert_line line = match line with 
   | "PRINT"::r -> Print(get_expression (purifier r))
+  | h :: ":=" :: q -> Set(h, get_expression (purifier q)) (* cette ligne doit être à la fin du match*)
 ;;
 
 
@@ -122,7 +128,7 @@ let rec read_lines lines = match lines with
 let read_polish (filename:string) : program =
   let ic = open_in filename in 
     read_file ic 0;;
-read_polish "/Users/victor/Documents/Cours L3/PF5/pf5-projet/exemples/fact.p";;
+
 
 
 let print_polish (p:program) : unit = failwith "TODO"
