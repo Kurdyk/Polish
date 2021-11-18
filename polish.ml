@@ -86,7 +86,7 @@ let rec read_file channel current =
 
 let purifier liste = List.filter (fun k -> k <> "") liste;;
 
-let check_expression_validity expression = if List.length expression = 1 then List.hd expression else match List.hd (List.tl expression) with | Num(a) -> printf "Exception: Unexpected argument %d" a; exit 1; |_ -> printf "Exception: Unknown error"; exit 1;;
+let check_expression_validity expression = if List.length expression = 1 then List.hd expression else match List.hd (List.tl expression) with | Num(a) -> printf "Exception: Unexpected argument %d" a; exit 1; | Var(a) -> printf "Exception: Unexpected argument %s" a; exit 1; |_ -> printf "Exception: Unknown error"; exit 1;;
 
 let get_expression exp =
   let rec auxiliaire exp = match exp with 
@@ -188,6 +188,8 @@ let read_polish (filename:string) : program =
   let file = read_file ic 0 in 
     read_lines file 
 ;;
+
+read_polish "/Users/victor/Documents/Cours L3/PF5/pf5-projet/exemples/fibo.p";;
 
 
 
