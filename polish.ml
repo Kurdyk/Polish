@@ -233,7 +233,7 @@ let print_polish (p:program) : unit =
             printf "%s" "IF "; print_condi cond; printf "\n" ; interne (current_block + 1) block1;
         | block2 -> print_indent current_block;
             printf "%s" "IF "; print_condi cond; printf "\n" ; interne (current_block + 1) block1;
-            printf "%s\n" "ELSE "; interne (current_block + 1) block2; 
+            printf "\n"; print_indent current_block; printf "ELSE\n"; interne (current_block + 1) block2; 
   and interne (current_block:int) (lp:program) : unit =
     match lp with 
       | [] -> ()
@@ -252,7 +252,7 @@ let main () =
   match Sys.argv with
     | [|_;"--reprint";file|] -> print_polish (read_polish file)
     | [|_;"--eval";file|] -> eval_polish (read_polish file)
-    | _ -> usage ()*)
+    | _ -> usage ()
 
 (* lancement de ce main *)
 let () = main ()
