@@ -249,11 +249,10 @@ let usage () =
   print_string "usage: à documenter (TODO)\n"
 
 let main () =
-  print_polish (read_polish "/home/louis/Desktop/pf5-projet/exemples/mult_russe.p")
-(*match Sys.argv with
-  | [|_;"--reprint";file|] -> print_polish (read_polish file)
-  | [|_;"--eval";file|] -> eval_polish (read_polish file)
-  | _ -> usage ()*)
+  match Sys.argv with
+    | [|_;"--reprint";file|] -> print_polish (read_polish file)
+    | [|_;"--eval";file|] -> eval_polish (read_polish file)
+    | _ -> usage ()*)
 
 (* lancement de ce main *)
 let () = main ()
