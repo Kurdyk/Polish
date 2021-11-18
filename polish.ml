@@ -55,7 +55,9 @@ let env = ref ENV.empty
 
 let exclusion_names = ["READ"; "PRINT"; "IF"; "ELSE"; "WHILE"; "COMMENT";
                        ":="; "+"; "-"; "*"; "/"; "%"; 
-                       "="; "<>"; "<"; "<="; ">"; ">="]
+                       "="; "<>"; "<"; "<="; ">"; ">="];;
+
+let operators = ["="; "<>"; "<"; "<="; ">"; ">="]
 
 let is_numeric str = 
   try
@@ -115,31 +117,77 @@ let get_expression exp =
                      | h :: [] -> printf "Exception: Not enought arguments for operator %% (required 2, found 1)"; exit 1
                      | h1 :: h2 :: [] -> [Op(Mod, h1, h2)]
                      | h1 :: h2 :: q -> [Op(Mod, h1, h2)] @ q)
-    | h :: q -> if not (var_exists h) then begin printf "Variable %s referenced before assignment" h; exit 1; end else Var(h) :: auxiliaire q
+    | h :: q -> Var(h) :: auxiliaire q
   in check_expression_validity (auxiliaire exp)
 ;;
 
 
-let rec convert_line line = match line with 
-  | "PRINT"::r -> Print(get_expression (purifier r))
-  | "READ" :: n :: [] -> Read(n)
-  | "READ" :: q -> printf "Syntax error: READ method does not allow multiple parameters"; exit 1;
-  | h :: ":=" :: q -> Set(h, get_expression (purifier q)) (* cette ligne doit être à la fin du match*)
-  | _ -> Read("a")
+let split_on_operator condition = 
+  let rec interne cond expr1 = match cond with
+    | [] -> ([], "", [])
+    | operator :: expr2 when List.mem operator operators -> (expr1, operator, expr2)
+    | h :: q -> interne q (expr1 @ [h])
+  in interne condition []
 ;;
 
 
-let rec read_lines lines = match lines with
+let rec get_condition condition line= let (expr1, operator, expr2) = split_on_operator condition in 
+    match operator with 
+      | "=" -> (get_expression expr1, Eq, get_expression expr2)
+      | "<>" -> (get_expression expr1, Ne, get_expression expr2)
+      | "<" -> (get_expression expr1, Lt, get_expression expr2)
+      | "<=" -> (get_expression expr1, Le, get_expression expr2)
+      | ">" -> (get_expression expr1, Gt, get_expression expr2)
+      | ">=" -> (get_expression expr1, Ge, get_expression expr2)
+      | _ -> printf "Exception: cannot parse condition on line %d, no operator found" line; exit 1;
+;;
+
+
+let rec calcul_indent line = match line with 
+  | "" :: q -> 1 + calcul_indent q 
+  | _ -> 0
+;;
+
+let rec search_for_else lines current_indent = match lines with
   | [] -> []
-  | (n, l) :: lines_queue -> convert_line (String.split_on_char ' ' l) :: read_lines lines_queue
+  | (n, l) :: lines_queue -> let line = (String.split_on_char ' ' l) in
+      let indent = calcul_indent line in
+        if indent >= current_indent then search_for_else lines_queue current_indent
+        else if indent = (current_indent - 2) && List.hd (purifier line) = "ELSE" then lines_queue
+        else []
+;;
+
+
+let read_lines lines = 
+  let rec aux lines current_indent allow_else =
+    (match lines with
+      | [] -> []
+      | (n, l) :: lines_queue ->let line = (String.split_on_char ' ' l) in
+          let indent = calcul_indent line in
+            if (indent = current_indent && allow_else && List.hd (purifier line) = "ELSE") || List.hd (purifier line) = "COMMENT" then aux lines_queue current_indent false
+            else if indent = current_indent then (n, convert_line (String.split_on_char ' ' l) current_indent lines_queue n) :: aux lines_queue current_indent (if List.hd (purifier line) = "IF" then true else false)
+            else if indent > current_indent then aux lines_queue current_indent allow_else
+            else [])
+
+  and convert_line line current_indent prog_continuation n = 
+    (match purifier line with 
+      | "PRINT"::r -> Print(get_expression (purifier r))
+      | "READ" :: n :: [] -> Read(n)
+      | "READ" :: q -> printf "Syntax error: READ method does not allow multiple parameters"; exit 1;
+      | "WHILE" :: q -> While(get_condition q n, aux prog_continuation (current_indent + 2) false)
+      | "IF" :: q -> If(get_condition q n, aux prog_continuation (current_indent + 2) false, aux (search_for_else prog_continuation (current_indent + 2)) (current_indent + 2) false)
+      | "ELSE" :: q -> printf "Syntax error, line %d: found ELSE keyword, but no IF were found before" n; exit 1;
+      | h :: ":=" :: q -> Set(h, get_expression (purifier q)) (* cette ligne doit être à la fin du match*)
+      | _ -> Read("a"))
+  in aux lines 0 false
 ;;
 
 
 let read_polish (filename:string) : program =
   let ic = open_in filename in 
-    read_file ic 0;;
-
-
+  let file = read_file ic 0 in 
+    read_lines file 
+;;
 
 
 let print_polish (p:program) : unit = 
