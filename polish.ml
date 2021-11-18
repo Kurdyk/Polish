@@ -153,7 +153,7 @@ let rec search_for_else lines current_indent = match lines with
   | (n, l) :: lines_queue -> let line = (String.split_on_char ' ' l) in
       let indent = calcul_indent line in
         if indent >= current_indent then search_for_else lines_queue current_indent
-        else if indent = (current_indent - 2) then lines_queue
+        else if indent = (current_indent - 2) && List.hd (purifier line) = "ELSE" then lines_queue
         else []
 ;;
 
