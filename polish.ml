@@ -197,24 +197,24 @@ let print_polish (p:program) : unit =
 
   let rec print_expr (expression:expr) : unit =
     match expression with 
-      | Num(x) -> printf "%s" (string_of_int x);
-      | Var(name) -> printf "%s" (name)
+      | Num(x) -> printf "%s " (string_of_int x);
+      | Var(name) -> printf "%s " (name)
       | Op(op1, expr1, expr2) -> match op1 with
-        | Add -> printf(" + "); print_expr expr1; print_expr expr2;
-        | Sub -> printf(" - "); print_expr expr1; print_expr expr2;
-        | Mul -> printf(" * "); print_expr expr1; print_expr expr2;
-        | Div -> printf(" / "); print_expr expr1; print_expr expr2;
-        | Mod -> printf "%s" (" % "); print_expr expr1; print_expr expr2;
+        | Add -> printf("+ "); print_expr expr1; print_expr expr2;
+        | Sub -> printf("- "); print_expr expr1; print_expr expr2;
+        | Mul -> printf("* "); print_expr expr1; print_expr expr2;
+        | Div -> printf("/ "); print_expr expr1; print_expr expr2;
+        | Mod -> printf "%s" ("% "); print_expr expr1; print_expr expr2;
   in
 
   let print_condi condi = 
     match condi with 
-      | (expr1, Eq, expr2) -> print_expr expr1; printf " = "; print_expr expr2;
-      | (expr1, Ne, expr2) -> print_expr expr1; printf " <> "; print_expr expr2; (* Not equal, <> *)
-      | (expr1, Lt, expr2) -> print_expr expr1; printf " < "; print_expr expr2; (* Less than, < *)
-      | (expr1, Le, expr2) -> print_expr expr1; printf " <= "; print_expr expr2; (* Less or equal, <= *)
-      | (expr1, Gt, expr2) -> print_expr expr1; printf " > "; print_expr expr2; (* Greater than, > *)
-      | (expr1, Ge, expr2) -> print_expr expr1; printf " >= "; print_expr expr2; (* Greater or equal, >= *)
+      | (expr1, Eq, expr2) -> print_expr expr1; printf "= "; print_expr expr2;
+      | (expr1, Ne, expr2) -> print_expr expr1; printf "<> "; print_expr expr2; (* Not equal, <> *)
+      | (expr1, Lt, expr2) -> print_expr expr1; printf "< "; print_expr expr2; (* Less than, < *)
+      | (expr1, Le, expr2) -> print_expr expr1; printf "<= "; print_expr expr2; (* Less or equal, <= *)
+      | (expr1, Gt, expr2) -> print_expr expr1; printf "> "; print_expr expr2; (* Greater than, > *)
+      | (expr1, Ge, expr2) -> print_expr expr1; printf ">= "; print_expr expr2; (* Greater or equal, >= *)
 
   in 
 
@@ -226,15 +226,18 @@ let print_polish (p:program) : unit =
           printf "%s" ("READ " ^ name);
       | Print(expr) -> print_indent current_block;
           printf "%s" ("PRINT "); print_expr expr;
-      | If(cond, block1, block2) -> print_indent current_block;
-          printf "%s" "IF "; print_condi cond; interne (current_block + 1) block1;
-          printf "%s\n" "ELSE"; interne (current_block + 1) block2; 
-      | While(cond, block) -> print_indent current_block;
-          print_condi cond; interne (current_block + 1) block;
-
+      | While(cond, block) -> print_indent current_block; printf "WHILE " ;
+          print_condi cond; printf "\n" ;interne (current_block + 1) block;
+      | If(cond, block1, block2) -> match block2 with 
+        | [] -> print_indent current_block;
+            printf "%s" "IF "; print_condi cond; printf "\n" ; interne (current_block + 1) block1;
+        | block2 -> print_indent current_block;
+            printf "%s" "IF "; print_condi cond; printf "\n" ; interne (current_block + 1) block1;
+            printf "%s\n" "ELSE "; interne (current_block + 1) block2; 
   and interne (current_block:int) (lp:program) : unit =
     match lp with 
       | [] -> ()
+      | h::[] -> print_instr (snd h) current_block;
       | h::t -> print_instr (snd h) current_block; printf "\n" ; interne current_block t;
   in interne 0 p;;
 
@@ -246,10 +249,11 @@ let usage () =
   print_string "usage: à documenter (TODO)\n"
 
 let main () =
-  match Sys.argv with
-    | [|_;"--reprint";file|] -> print_polish (read_polish file)
-    | [|_;"--eval";file|] -> eval_polish (read_polish file)
-    | _ -> usage ()
+  print_polish (read_polish "/home/louis/Desktop/pf5-projet/exemples/mult_russe.p")
+(*match Sys.argv with
+  | [|_;"--reprint";file|] -> print_polish (read_polish file)
+  | [|_;"--eval";file|] -> eval_polish (read_polish file)
+  | _ -> usage ()*)
 
 (* lancement de ce main *)
 let () = main ()
