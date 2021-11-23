@@ -296,6 +296,51 @@ let eval_polish (p:program) =
 
 
 let simpl_polish (p:program) = 
+
+  let rec no_var expr =
+    match expr with 
+      | Num(x) -> true
+      | Var(name) -> false
+      | Op(op, expr1, expr2) -> (no_var expr1) && (no_var expr2)
+  in
+
+  let toujours_valide cond =
+    match cond with
+      | expr1, comp, expr2 when not (no_var expr1) || not (no_var expr2) -> None (* Cas ou l'on a des varibles dans la condition*)
+      | Num(x), comp, Num(y) (*Les expressions sont deja simplifiées car on l'appelle sur interne *) 
+        -> (match comp with
+             | Eq -> Some(x = y)
+             | Ne -> Some(x <> y)
+             | Lt -> Some(x < y)
+             | Le -> Some(x <= y)
+             | Gt -> Some(x > y)
+             | Ge -> Some(x >= y))
+      | _ -> assert(false)
+
+  in 
+
+  let rec code_mort (p:program) (acc:program) = 
+    match p with 
+      | [] -> acc
+      | (pos, instr)::xs -> match instr with 
+        | If(cond, block1, block2) -> (match toujours_valide cond with
+                                        | None -> code_mort xs (List.append acc [(pos, If(cond, block1, block2))])
+                                        | Some(true) -> code_mort xs (List.append acc block1)
+                                        | Some(false) -> code_mort xs (List.append acc block2))
+        | While(cond, block) -> (match toujours_valide cond with
+                                  | None | Some(true) -> code_mort xs (List.append acc [pos, While(cond, block)])
+                                  | Some(false) -> code_mort xs acc)
+        | instr -> code_mort xs (List.append acc [(pos, instr)])
+
+  in 
+
+  let rec reline (p:program) pos_courante acc=
+    match p with
+      | [] -> acc
+      | (pos,instr)::xs -> reline xs (pos_courante + 1) (List.append acc [pos_courante, instr])  
+
+  in
+
   let rec simpl_expr_ari(expr_init:expr) =
     match expr_init with 
       | Num(x) -> Num(x)
@@ -310,6 +355,7 @@ let simpl_polish (p:program) =
                                         | Add -> if y = 0 then Var(name1) else Op(op, Var(name1), Num(y))
                                         | Mul -> if y = 1 then Var(name1) else 
                                             if y = 0 then Num 0 else Op(op, Var(name1), Num(y))
+                                        | Div -> if y = 1 then Var(name1) else Op(op, Var(name1), Num(y))
                                         | _ -> Op(op, Var(name1), Num(y)))
       | Op(op, Num(x), Var(name2)) -> (match op with 
                                         | Add -> if x = 0 then Var(name2) else Op(op, Num(x) , Var(name2))
@@ -344,7 +390,7 @@ let simpl_polish (p:program) =
     match p with
       | [] -> acc
       | (pos, instruct)::xs -> interne xs (List.append acc [(pos, simpl_instr instruct)])
-  in interne p []
+  in reline(code_mort (interne p []) []) 0 []
 ;; 
 
 
