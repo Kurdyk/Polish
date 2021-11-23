@@ -295,6 +295,56 @@ let eval_polish (p:program) =
 
 
 
+let simpl_polish (p:program) = 
+  let rec simpl_expr_ari(expr_init:expr) =
+    match expr_init with 
+      | Num(x) -> Num(x)
+      | Var(name) -> Var(name)
+      | Op(op, Num(x), Num(y)) -> (match op with 
+                                    | Add -> Num(x + y)
+                                    | Sub -> Num(x - y)
+                                    | Mul -> Num(x * y)
+                                    | Div -> Num(x / y)
+                                    | Mod -> Num(x mod y))
+      | Op(op, Var(name1), Num(y)) -> (match op with 
+                                        | Add -> if y = 0 then Var(name1) else Op(op, Var(name1), Num(y))
+                                        | Mul -> if y = 1 then Var(name1) else Op(op, Var(name1), Num(y))
+                                        | _ -> Op(op, Var(name1), Num(y)))
+      | Op(op, Num(x), Var(name2)) -> (match op with 
+                                        | Add -> if x = 0 then Var(name2) else Op(op, Num(x) , Var(name2))
+                                        | Mul -> if x = 1 then Var(name2) else Op(op, Num(x) , Var(name2))
+                                        | _ -> Op(op, Num(x) , Var(name2)))
+      | Op(op, Var(name1), Var(name2)) -> Op(op, Var(name1), Var(name2))
+      | Op(op, expr1, expr2) -> simpl_expr_ari (Op(op, simpl_expr_ari expr1, simpl_expr_ari expr2))
+  in
+
+  let simpl_condi cond = match cond with
+    | (expr1, Eq, expr2) -> simpl_expr_ari expr1, Eq, simpl_expr_ari expr2;
+    | (expr1, Ne, expr2) -> simpl_expr_ari expr1, Ne, simpl_expr_ari expr2; 
+    | (expr1, Lt, expr2) -> simpl_expr_ari expr1, Lt, simpl_expr_ari expr2; 
+    | (expr1, Le, expr2) -> simpl_expr_ari expr1, Le, simpl_expr_ari expr2;
+    | (expr1, Gt, expr2) -> simpl_expr_ari expr1, Gt, simpl_expr_ari expr2; 
+    | (expr1, Ge, expr2) -> simpl_expr_ari expr1, Ge, simpl_expr_ari expr2; 
+
+  in
+
+  let rec simpl_instr instruct = match instruct with
+    | Set(name, expr) -> Set(name, simpl_expr_ari expr)
+    | If(cond, block1, block2) -> If(simpl_condi cond, interne block1 [], interne block2 [])
+    | While(cond, block) -> While(simpl_condi cond, interne block [])
+    | Print(expr) -> Print(simpl_expr_ari expr)
+    | Read(name) -> Read(name)
+
+  and 
+
+    interne (p:program) acc =
+    match p with
+      | [] -> acc
+      | (pos, instruct)::xs -> interne xs (List.append acc [(pos, simpl_instr instruct)])
+  in interne p []
+;; 
+
+
 let usage () =
   print_string "Polish : analyse statique d'un mini-langage\n";
   print_string "usage: à documenter (TODO)\n"
@@ -303,6 +353,7 @@ let main () =
   match Sys.argv with
     | [|_;"--reprint";file|] -> print_polish (read_polish file)
     | [|_;"--eval";file|] -> eval_polish (read_polish file)
+    | [|_;"--simpl";file|] -> print_polish (simpl_polish(read_polish file))
     | _ -> usage ()
 
 (* lancement de ce main *)
