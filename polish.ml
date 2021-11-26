@@ -47,10 +47,38 @@ and block = (position * instr) list
 (** Un programme Polish est un bloc d'instructions *)
 type program = block
 
+(*type sign = Neg | Zero | Pos | Error*)
+
+module Sign = 
+struct
+  type t = Neg | Zero | Pos | Error
+  let compare t1 t2 = 
+    match (t1, t2) with 
+      | (Neg, Neg) -> 0
+      | (Neg, Zero) -> -1
+      | (Neg, Pos) -> -2
+      | (Neg, Error) -> -10
+      | (Zero, Neg) -> 1
+      | (Zero, Zero) -> 0
+      | (Zero, Pos) -> 1
+      | (Zero, Error) -> -9
+      | (Pos, Neg) -> 2
+      | (Pos, Zero) -> 1
+      | (Pos, Pos) -> 0
+      | (Pos, Error) -> -8
+      | (Error, Neg) -> 10
+      | (Error, Zero) -> 9
+      | (Error, Pos) -> 8
+      | (Error, Error) -> 0
+end 
+
+module VAR_SIGN = Set.Make(Sign)
+
 
 (***********************************************************************)
 
 module ENV = Map.Make(String);;
+
 
 let exclusion_names = ["READ"; "PRINT"; "IF"; "ELSE"; "WHILE"; "COMMENT";
                        ":="; "+"; "-"; "*"; "/"; "%"; 
@@ -481,6 +509,76 @@ let vars (p:program) =
   in print_env (fst_t env_triplet); printf "\n"; print_env (snd_t env_triplet); printf "\n"
 ;;
 
+let ajouter_dans_set varname value env = ENV.update varname (fun x -> match x with | None -> None | Some a -> Some(VAR_SIGN.union value a)) env
+let get_possible_signs varname env = ENV.find varname env;;
+let nswoe element = (VAR_SIGN.add element (VAR_SIGN.empty))
+
+let combine_possibilities operation expr1 expr2 = 
+  let compute_comb operation sign1 sign2 = match (operation, sign1, sign2) with 
+    | (Add, _, Sign.Error) | (Add, Sign.Error, _) -> VAR_SIGN.(empty |> add(Error))
+    | (Add, Sign.Neg, Sign.Neg) | (Add, Sign.Neg, Sign.Zero) | (Add, Sign.Zero, Sign.Neg) -> VAR_SIGN.(empty |> add(Neg))
+    | (Add, Sign.Pos, Sign.Pos) | (Add, Sign.Pos, Sign.Zero) | (Add, Sign.Zero, Sign.Pos) -> VAR_SIGN.(empty |> add(Pos))
+    | (Add, Sign.Zero, Sign.Zero) -> VAR_SIGN.(empty |> add(Zero))
+    | (Add, _, _) -> VAR_SIGN.(empty |> add(Neg) |> add(Zero) |> add(Pos))
+
+    | (Sub, _, Sign.Error) | (Sub, Sign.Error, _) -> VAR_SIGN.(empty |> add(Error))
+    | (Sub, Sign.Neg, Sign.Pos) | (Sub, Sign.Neg, Sign.Zero) | (Sub, Sign.Zero, Sign.Pos) -> VAR_SIGN.(empty |> add(Neg))
+    | (Sub, Sign.Pos, Sign.Neg) | (Sub, Sign.Pos, Sign.Zero) | (Sub, Sign.Zero, Sign.Neg) -> VAR_SIGN.(empty |> add(Pos))
+    | (Sub, Sign.Zero, Sign.Zero) -> VAR_SIGN.(empty |> add(Zero))
+    | (Sub, _, _) -> VAR_SIGN.(empty |> add(Neg) |> add(Zero) |> add(Pos))
+
+    | (Mul, _, Sign.Error) | (Mul, Sign.Error, _) -> VAR_SIGN.(empty |> add(Error))
+    | (Mul, Sign.Pos, Sign.Neg) | (Mul, Sign.Neg, Sign.Pos) -> VAR_SIGN.(empty |> add(Neg))
+    | (Mul, Sign.Pos, Sign.Pos) | (Mul, Sign.Neg, Sign.Neg) -> VAR_SIGN.(empty |> add(Pos))
+    | (Mul, Sign.Zero, _) | (Mul, _, Sign.Zero) -> VAR_SIGN.(empty |> add(Zero))
+
+    | (Div, _, Sign.Error) | (Div, Sign.Error, _) | (Div, _, Sign.Zero) -> VAR_SIGN.(empty |> add(Error))
+    | (Div, Sign.Pos, Sign.Neg) | (Div, Sign.Neg, Sign.Pos) -> VAR_SIGN.(empty |> add(Neg))
+    | (Div, Sign.Pos, Sign.Pos) | (Div, Sign.Neg, Sign.Neg) -> VAR_SIGN.(empty |> add(Pos))
+    | (Div, Sign.Zero, _) -> VAR_SIGN.(empty |> add(Zero))
+
+    | (Mod, _, Sign.Error) | (Mod, Sign.Error, _) | (Mod, _, Sign.Zero) -> VAR_SIGN.(empty |> add(Error))
+    | (Mod, _, _) -> VAR_SIGN.(empty |> add(Pos))
+
+  in let rec comb2 operation sign1 sign2_list env = 
+       match (sign1, sign2_list) with
+         | (_, []) -> env
+         | (_, h :: q) -> comb2 operation sign1 q (VAR_SIGN.union env (compute_comb operation sign1 h))
+  in let rec comb1 operation sign1_list sign2_list env = 
+       match (sign1_list, sign2_list) with 
+         | ([], _) -> env
+         | (h :: q, _) -> comb1 operation q sign2_list (comb2 operation h sign2_list env)
+  in comb1 operation (VAR_SIGN.elements expr1) (VAR_SIGN.elements expr2) VAR_SIGN.empty
+;;
+
+let rec detect_sign expr env = match expr with 
+  | Num(a) -> if a < 0 then VAR_SIGN.(empty |> add(Neg))
+      else if a = 0 then VAR_SIGN.(empty |> add(Zero))
+      else VAR_SIGN.(empty |> add(Pos))
+  | Var(v) -> get_possible_signs v env
+  | Op(operation, expr1, expr2) -> combine_possibilities operation (detect_sign expr1 env) (detect_sign expr2 env)
+;;
+
+
+let check_sign prog =
+  let print_var_signs name signs = 
+    let rec aux signs_list = match signs_list with 
+      | [] -> printf "\n" 
+      | Sign.Neg :: q -> printf "-"; aux q
+      | Sign.Zero :: q -> printf "0" ; aux q
+      | Sign.Pos :: q -> printf "+" ; aux q
+      | Sign.Error :: q -> printf "!" ; aux q
+    in printf "%s " name; aux (VAR_SIGN.elements signs)
+  in let rec interne prog env = match prog with 
+       | [] -> env
+       | (l, Read(name)) :: suite_prog -> interne suite_prog (ENV.add name VAR_SIGN.(empty |> add(Neg) |> add(Zero) |> add(Pos)) env)
+       | (l, Set(name, expr)) :: suite_prog -> interne suite_prog (ENV.add name (detect_sign expr env) env)
+       | (l, If(cond, block1, block2)) :: suite_prog -> interne suite_prog (interne block2 (interne block1 env))
+       | (l, While(cond, block)) :: suite_prog -> interne suite_prog (interne block env)
+       | (l, Print(expr)) :: suite_prog -> interne suite_prog env
+  in ENV.iter print_var_signs (interne prog ENV.empty)
+
+
 let usage () =
   print_string "Polish : analyse statique d'un mini-langage\n";
   print_string "usage: à documenter (TODO)\n"
@@ -491,6 +589,7 @@ let main () =
     | [|_;"--eval";file|] -> eval_polish (read_polish file)
     | [|_;"--simpl";file|] -> print_polish (simpl_polish(read_polish file))
     | [|_;"--vars";file|] -> vars(read_polish file)
+    | [|_; "--sign"; file|] -> check_sign(read_polish file)
     | _ -> usage ()
 
 (* lancement de ce main *)
