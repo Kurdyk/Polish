@@ -559,6 +559,26 @@ let rec detect_sign expr env = match expr with
   | Op(operation, expr1, expr2) -> combine_possibilities operation (detect_sign expr1 env) (detect_sign expr2 env)
 ;;
 
+let merge_maps map1 map2 = 
+  let get_keys map = 
+    let rec interne bindings = match bindings with 
+      | [] -> []
+      | (k, v) :: q -> k :: interne q
+    in interne (ENV.bindings map)
+  in let rec aux keys env = match keys with
+       | [] -> env 
+       | k :: q -> aux q (match (ENV.mem k env, ENV.mem k map1, ENV.mem k env2) with
+                           | (_, false, false) -> env
+                           | (true, false, true) -> ENV.add k (VAR_SIGN.union (ENV.find k env) (ENV.find k map2)) env
+                           | (false, false, true) -> ENV.add k (ENV.find k map2) env 
+                           | (true, true, false) -> ENV.add k (VAR_SIGN.union (ENV.find k env) (ENV.find k map1)) env
+                           | (false, true, false) -> ENV.add k (ENV.find k map1) env 
+                           | (true, true, true) -> ENV.add k (VAR_SIGN.union (VAR_SIGN.union (ENV.find k env) (ENV.find k map2)) (ENV.find k map1)) env
+                           | (false, true, true) -> ENV.add k (VAR_SIGN.union (ENV.find k map1) (ENV.find k map2)) env)
+  in aux ((get_keys map1) @ (get_keys map2)) ENV.empty
+;;
+
+
 
 let check_sign prog =
   let print_var_signs name signs = 
