@@ -78,6 +78,7 @@ module VAR_SIGN = Set.Make(Sign)
 (***********************************************************************)
 
 module ENV = Map.Make(String);;
+module VAR = Set.Make(String)
 
 
 let exclusion_names = ["READ"; "PRINT"; "IF"; "ELSE"; "WHILE"; "COMMENT";
@@ -325,16 +326,18 @@ let eval_polish (p:program) =
 
 let simpl_polish (p:program) = 
 
-  let rec no_var expr =
+
+  let rec var_in expr =
     match expr with 
-      | Num(x) -> true
-      | Var(name) -> false
-      | Op(op, expr1, expr2) -> (no_var expr1) && (no_var expr2)
+      | Num(x) -> []
+      | Var(name) -> [name]
+      | Op(op, expr1, expr2) -> List.rev_append (var_in expr1) (var_in expr2)
   in
 
-  let toujours_valide cond =
+  let toujours_valide cond = 
     match cond with
-      | expr1, comp, expr2 when not (no_var expr1) || not (no_var expr2) -> None (* Cas ou l'on a des varibles dans la condition*)
+      | expr1, comp, expr2 when not (var_in expr1 = []) || not (var_in expr2 = [])
+        -> None (* Cas ou l'on a des varibles dans la condition*)
       | Num(x), comp, Num(y) (*Les expressions sont deja simplifiées car on l'appelle sur interne *) 
         -> (match comp with
              | Eq -> Some(x = y)
@@ -344,21 +347,6 @@ let simpl_polish (p:program) =
              | Gt -> Some(x > y)
              | Ge -> Some(x >= y))
       | _ -> assert(false)
-
-  in 
-
-  let rec code_mort (p:program) (acc:program) = 
-    match p with 
-      | [] -> acc
-      | (pos, instr)::xs -> match instr with 
-        | If(cond, block1, block2) -> (match toujours_valide cond with
-                                        | None -> code_mort xs (List.append acc [(pos, If(cond, block1, block2))])
-                                        | Some(true) -> code_mort xs (List.append acc block1)
-                                        | Some(false) -> code_mort xs (List.append acc block2))
-        | While(cond, block) -> (match toujours_valide cond with
-                                  | None | Some(true) -> code_mort xs (List.append acc [pos, While(cond, block)])
-                                  | Some(false) -> code_mort xs acc)
-        | instr -> code_mort xs (List.append acc [(pos, instr)])
 
   in 
 
@@ -395,33 +383,132 @@ let simpl_polish (p:program) =
       | Op(op, expr1, expr2) -> simpl_expr_ari (Op(op, simpl_expr_ari expr1, simpl_expr_ari expr2))
   in
 
-  let simpl_condi cond = match cond with
-    | (expr1, Eq, expr2) -> simpl_expr_ari expr1, Eq, simpl_expr_ari expr2;
-    | (expr1, Ne, expr2) -> simpl_expr_ari expr1, Ne, simpl_expr_ari expr2; 
-    | (expr1, Lt, expr2) -> simpl_expr_ari expr1, Lt, simpl_expr_ari expr2; 
-    | (expr1, Le, expr2) -> simpl_expr_ari expr1, Le, simpl_expr_ari expr2;
-    | (expr1, Gt, expr2) -> simpl_expr_ari expr1, Gt, simpl_expr_ari expr2; 
-    | (expr1, Ge, expr2) -> simpl_expr_ari expr1, Ge, simpl_expr_ari expr2; 
+  let simpl_cond cond = match cond with
+    | (expr1, comp, expr2) -> simpl_expr_ari expr1, comp, simpl_expr_ari expr2;
 
   in
 
-  let rec simpl_instr instruct = match instruct with
-    | Set(name, expr) -> Set(name, simpl_expr_ari expr)
-    | If(cond, block1, block2) -> If(simpl_condi cond, interne block1 [], interne block2 [])
-    | While(cond, block) -> While(simpl_condi cond, interne block [])
-    | Print(expr) -> Print(simpl_expr_ari expr)
-    | Read(name) -> Read(name)
+  let rec simpl_with_const expr env = 
+    match expr with 
+      | Var(name) when ENV.mem name env -> ENV.find name env
+      | Op(op, Var(name1), Num(y)) when ENV.mem name1 env -> simpl_expr_ari (Op(op, ENV.find name1 env, Num(y)))
 
-  and 
+      | Op(op, Num(x), Var(name2)) when ENV.mem name2 env ->  simpl_expr_ari (Op(op, Num(x), ENV.find name2 env))
 
-    interne (p:program) acc =
+      | Op(op, Var(name1), Var(name2)) when ENV.mem name1 env && ENV.mem name2 env
+        ->  simpl_expr_ari (Op(op, ENV.find name1 env, ENV.find name2 env))
+
+      | Op(op, Var(name1), Var(name2)) when ENV.mem name1 env && not (ENV.mem name2 env)
+        ->  simpl_expr_ari (Op(op, ENV.find name1 env, Var(name2)))
+
+      | Op(op, Var(name1), Var(name2)) when not (ENV.mem name1 env) && ENV.mem name2 env
+        ->  simpl_expr_ari (Op(op, Var(name1), ENV.find name2 env))
+
+      | Op(op, Var(name1), Var(name2)) when not (ENV.mem name1 env && ENV.mem name2 env)
+        ->  simpl_expr_ari (Op(op, Var(name1), Var(name2)))
+
+      | Op(op, expr1, expr2) -> simpl_expr_ari (Op(op, simpl_with_const expr1 env, simpl_with_const expr2 env))
+      | expr -> expr
+
+  in
+
+  let simpl_cond_with_const cond env = 
+    match cond with 
+      | (expr1, comp, expr2) -> simpl_with_const expr1 env, comp, simpl_with_const expr2 env
+  in 
+
+  let maj_env env_init env_maj = 
+    ENV.mapi (fun key _ -> ENV.find key env_maj) (ENV.filter (fun key _ -> ENV.mem key env_maj) env_init) 
+
+  in 
+
+  let stability env_init env_post = 
+    ENV.filter (fun key value -> ENV.find key env_post = value) (ENV.filter (fun key _ -> ENV.mem key env_post) env_init) 
+  in 
+
+
+
+  let rec find_const (p:program) env_const acc in_while =
     match p with
-      | [] -> acc
-      | (pos, instruct)::xs -> interne xs (List.append acc [(pos, simpl_instr instruct)])
-  in reline(code_mort (interne p []) []) 0 []
+      | [] -> acc, env_const
+      | (pos, instr)::t -> match instr with 
+
+        | Set(name, expr) -> let expr_s = simpl_expr_ari expr in 
+              (match var_in expr_s with
+                | [] -> find_const
+                          t 
+                          (ENV.add name expr_s env_const) 
+                          (List.append acc [pos, Set(name, expr_s)]) 
+                          in_while
+                | l -> let expr_final = simpl_with_const expr_s env_const in 
+                      if List.for_all (fun x -> ENV.mem x env_const) l && not in_while
+                      then find_const
+                             t 
+                             (ENV.add name expr_final env_const) 
+                             (List.append acc [pos, Set(name, expr_final)]) 
+                             in_while
+                      else if List.mem name l then
+                        find_const
+                          t
+                          (ENV.remove name env_const)
+                          (List.append acc [pos, Set(name, simpl_with_const expr_s (ENV.remove name env_const))]) 
+                          in_while
+                      else 
+                        find_const
+                          t
+                          (ENV.add name expr_s env_const) 
+                          (List.append acc [pos, Set(name, expr_final)]) 
+                          in_while)
+
+        | Read(name) -> find_const 
+                          t
+                          (ENV.remove name env_const) 
+                          (List.append acc [pos, Read(name)]) 
+                          in_while
+        | Print(expr) -> find_const 
+                           t env_const
+                           (List.append acc [pos, Print(simpl_with_const expr env_const)])
+                           in_while
+
+        | If(cond, block1, block2) -> 
+            let b1, env1 = find_const block1 env_const [] in_while in
+            let b2, env2 = find_const block2 env_const [] in_while in 
+              (match toujours_valide (simpl_cond_with_const cond env_const) with
+                | None -> find_const 
+                            t
+                            (stability env1 env2)
+                            (List.append acc [pos, If(simpl_cond_with_const cond env_const, b1, b2)])
+                            in_while
+                | Some(true) -> find_const 
+                                  t
+                                  (maj_env env_const env1)
+                                  (List.append acc b1)
+                                  in_while
+                | Some(false) -> find_const 
+                                   t
+                                   (maj_env env_const env2)
+                                   (List.append acc b2)
+                                   in_while)
+
+
+        | While(cond, block) -> let b, env = find_const block env_const [] true in
+              match toujours_valide (simpl_cond_with_const cond (maj_env env_const env)) with 
+                | None | Some(true) -> find_const
+                                         t 
+                                         (stability env_const env)
+                                         (List.append acc [pos, While(simpl_cond cond, b)])
+                                         in_while
+                | Some(false) -> find_const
+                                   t 
+                                   (stability env_const env)
+                                   acc
+                                   in_while
+
+
+
+  in reline(fst (find_const p ENV.empty [] false)) 0 []
 ;; 
 
-module VAR = Set.Make(String)
 
 let vars (p:program) =
 
@@ -509,6 +596,8 @@ let vars (p:program) =
   in print_env (fst_t env_triplet); printf "\n"; print_env (snd_t env_triplet); printf "\n"
 ;;
 
+
+
 let ajouter_dans_set varname value env = ENV.update varname (fun x -> match x with | None -> None | Some a -> Some(VAR_SIGN.union value a)) env
 let get_possible_signs varname env = ENV.find varname env;;
 let nswoe element = (VAR_SIGN.add element (VAR_SIGN.empty))
@@ -567,7 +656,7 @@ let merge_maps map1 map2 =
     in interne (ENV.bindings map)
   in let rec aux keys env = match keys with
        | [] -> env 
-       | k :: q -> aux q (match (ENV.mem k env, ENV.mem k map1, ENV.mem k env2) with
+       | k :: q -> aux q (match (ENV.mem k env, ENV.mem k map1, ENV.mem k map2) with
                            | (_, false, false) -> env
                            | (true, false, true) -> ENV.add k (VAR_SIGN.union (ENV.find k env) (ENV.find k map2)) env
                            | (false, false, true) -> ENV.add k (ENV.find k map2) env 
@@ -577,7 +666,6 @@ let merge_maps map1 map2 =
                            | (false, true, true) -> ENV.add k (VAR_SIGN.union (ENV.find k map1) (ENV.find k map2)) env)
   in aux ((get_keys map1) @ (get_keys map2)) ENV.empty
 ;;
-
 
 
 let check_sign prog =
@@ -597,7 +685,6 @@ let check_sign prog =
        | (l, While(cond, block)) :: suite_prog -> interne suite_prog (interne block env)
        | (l, Print(expr)) :: suite_prog -> interne suite_prog env
   in ENV.iter print_var_signs (interne prog ENV.empty)
-
 
 let usage () =
   print_string "Polish : analyse statique d'un mini-langage\n";
