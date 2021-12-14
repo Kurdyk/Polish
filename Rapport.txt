@@ -1,0 +1,38 @@
+/////////////////       Identifiants       ////////////////
+
+JOSSO Victor, @Victor.Josso,
+KURDYK Louis, @kurdyk, 22035612
+
+/////////////////       Fonctionnalités      ////////////////
+
+-reprint -> implémentée
+-eval -> implémentée
+-simpl -> implémentée avec propagation des constantes définies en cours de programme en plus de la simpllification des calculs. Cela implique la simplification de blocs supplémentaires par rapport à la simple simplification des calculs.
+Par exemple si en début de programme on pose a := 8 alors le programme affichera 8 et simplifie les calculs avec 8 plutôt que d'afficher a, sauf si a vient à être modifier dans une boucle while (qui sont encore en train d'être implémentée vis-à-vis de la définition des constantes dans le cors d'une boucle while ex : WHILE condition b := 42).
+-sign -> en cours d'implémentation
+-vars -> implémentée
+
+/////////////////       Compilation et exécution     ////////////////
+
+La compilation se fait par dune avec un make, il est possible de faire la compilation et l'exécution avec le script fourni initialement.
+
+/////////////////       Découpage modulaire      ////////////////
+
+/////////////////       Organisation du travail      ////////////////
+
+-read 
+-eval
+-sign 
+=> Implémentée par JOSSO Victor
+
+-reprint
+-simpl
+-vars
+=> Implémentée par KURDYK Louis
+
+Le plus gros du projet (tout sauf sign et la fin de simpl) a été effectué avant le 1er décembre.
+Nous avons réparti les tâches en deux temps : celles pour le premier rendu puis celles pour le second rendu pour pouvoir équilibrer le nombre de fonctions à implémenter.
+
+/////////////////       Misc      ////////////////
+
+Edité le : 14/12/21.
