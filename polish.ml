@@ -567,7 +567,7 @@ let merge_maps map1 map2 =
     in interne (ENV.bindings map)
   in let rec aux keys env = match keys with
        | [] -> env 
-       | k :: q -> aux q (match (ENV.mem k env, ENV.mem k map1, ENV.mem k env2) with
+       | k :: q -> aux q (match (ENV.mem k env, ENV.mem k map1, ENV.mem k map2) with
                            | (_, false, false) -> env
                            | (true, false, true) -> ENV.add k (VAR_SIGN.union (ENV.find k env) (ENV.find k map2)) env
                            | (false, false, true) -> ENV.add k (ENV.find k map2) env 
@@ -649,10 +649,10 @@ let satisfaisable (expr1, comp, expr2) env =
 ;;
 
 
-let rec isoler_variable (expr1, comparator, expr2) var_name env = 
+let isoler_variable (expr1, comparator, expr2) var_name env = 
   let operation_inverse operateur = match operateur with 
-    | Add -> Neg
-    | Neg -> Add
+    | Add -> Sub
+    | Sub -> Add
     | Mul -> Div
     | Div -> Mul
     | Mod -> failwith "Not Supposed to simplify mod"
@@ -665,17 +665,18 @@ let rec isoler_variable (expr1, comparator, expr2) var_name env =
        | Var(a) when a = var_name -> true
        | _ -> false
   in let rec is_modulo_in_expr expr = match expr with
-       | Num(a) | Var(a) -> false
+       | Num(a) -> false 
+       | Var(a) -> false
        | Op(Mod, _, _) -> true
        | Op(operateur, expr1, expr2) -> (is_modulo_in_expr expr1) || (is_modulo_in_expr expr2)
   in let is_processable expr1 expr2 var_name = 
        if ((var_in_expr expr1 var_name) && (is_modulo_in_expr expr1)) || ((var_in_expr expr2 var_name) && (is_modulo_in_expr expr2)) then false
        else true
-  in let rec passer_op expr var_name env
+  (*in let rec passer_op expr var_name env*)
   and isoler (expr1, comparator, expr2) var_name env = 
     if (variable_isolee expr1 var_name) || (variable_isolee expr2 var_name) then (expr1, comparator, expr2, env) 
     else (match comparator with 
-           | Eq -> if (var_in_expr expr1 var_name) then 
+           | _ -> if (var_in_expr expr1 var_name) then (expr1, comparator, expr2, env) else (expr1, comparator, expr2, env) 
          )
   in if not (is_processable expr1 expr2 var_name) then None else Some (isoler (expr1, comparator, expr2) var_name)
 ;;
@@ -712,7 +713,14 @@ let check_sign prog =
 
 let usage () =
   print_string "Polish : analyse statique d'un mini-langage\n";
-  print_string "usage: à documenter (TODO)\n"
+  print_string "	      usage: -option nom_fichier.p\nLes options sont :\n";
+  print_string "-reprint : affiche le programme polish.\n";
+  print_string "-eval : fait tourner le programme polish. Les READ du programme sont demandés dans le terminal.\n";
+  print_string "-simpl : affiche le programme polish avec calculs simplifiés et propagation des constantes (et simplifications éventuelles de bloc.\n";
+  print_string "-vars : affiche les variables du programme polish sur la première ligne et les varibales mal initialisées sur une seconde ligne.\n";
+  print_string "-sign : affiche le signe attendu de chaque variable du programme polish après analyse statique.\n";;
+
+
 
 let main () =
   match Sys.argv with
