@@ -716,11 +716,11 @@ let usage () =
 
 let main () =
   match Sys.argv with
-    | [|_;"-reprint";file|] -> print_polish (read_polish file)
-    | [|_;"-eval";file|] -> eval_polish (read_polish file)
-    | [|_;"-simpl";file|] -> print_polish (simpl_polish(read_polish file))
-    | [|_;"-vars";file|] -> vars(read_polish file)
-    | [|_;"-sign"; file|] -> check_sign(read_polish file)
+    | [|_;"--reprint";file|] -> print_polish (read_polish file)
+    | [|_;"--eval";file|] -> eval_polish (read_polish file)
+    | [|_;"--simpl";file|] -> print_polish (simpl_polish(read_polish file))
+    | [|_;"--vars";file|] -> vars(read_polish file)
+    | [|_;"--sign"; file|] -> check_sign(read_polish file)
     | _ -> usage ()
 
 (* lancement de ce main *)
