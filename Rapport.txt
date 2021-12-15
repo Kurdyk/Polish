@@ -18,6 +18,8 @@ La compilation se fait par dune avec un make, il est possible de faire la compil
 
 /////////////////       Découpage modulaire      ////////////////
 
+Le découpage modulaire sera effectué pour le rendu 2.
+
 /////////////////       Organisation du travail      ////////////////
 
 -read 
@@ -35,4 +37,4 @@ Nous avons réparti les tâches en deux temps : celles pour le premier rendu pui
 
 /////////////////       Misc      ////////////////
 
-Edité le : 14/12/21.
+Edité le : 16/12/21.
