@@ -738,7 +738,7 @@ let satisfaisable (expr1, comp, expr2) env =
 ;;
 
 
-let rec isoler_variable (expr1, comparator, expr2) var_name env = 
+let isoler_variable (expr1, comparator, expr2) var_name env = 
   let operation_inverse operateur = match operateur with 
     | Add -> Sub
     | Sub -> Add
