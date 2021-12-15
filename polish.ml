@@ -213,7 +213,7 @@ let read_lines lines =
 
 let read_polish (filename:string) : program =
   let ic = open_in filename in 
-  let file = read_file ic 1 in 
+  let file = read_file ic 0 in 
     read_lines file 
 ;;
 
@@ -579,115 +579,6 @@ let merge_maps map1 map2 =
 ;;
 
 
-let neg_condition (expr1,comparator, expr2) = match comparator with 
-  | Eq -> (expr1, Ne, expr2)
-  | Ne -> (expr1, Eq, expr2)
-  | Lt -> (expr1, Ge, expr2)
-  | Ge -> (expr1, Lt, expr2)
-  | Le -> (expr1, Gt, expr2)
-  | Gt -> (expr1, Le, expr2)
-;;
-
-
-let satisfaisable (expr1, comp, expr2) env =
-  let rec deux_egaux signs1_elements signs2 = 
-    match signs1_elements with 
-      | [] -> false
-      | h :: q when VAR_SIGN.mem h signs2 -> true
-      | h :: q -> deux_egaux q signs2
-  in let rec lt signs1_elements signs2 = 
-       let superieur_exist sign signs2 = 
-         match sign with 
-           | Sign.Neg -> not (VAR_SIGN.is_empty (VAR_SIGN.inter signs2 (VAR_SIGN.(empty |> add Neg |> add Zero |> add Pos))))
-           | Sign.Zero -> not (VAR_SIGN.is_empty (VAR_SIGN.inter signs2 (VAR_SIGN.(empty |> add Pos))))
-           | Sign.Pos -> not (VAR_SIGN.is_empty (VAR_SIGN.inter signs2 (VAR_SIGN.(empty |> add Pos))))
-           | Sign.Error -> false
-       in match signs1_elements with 
-         | [] -> false
-         | h :: q  when (superieur_exist h signs2) -> true
-         | h :: q -> lt q signs2
-  in let rec ge signs1_elements signs2 = 
-       let aux sign signs2 = 
-         match sign with 
-           | Sign.Neg -> not (VAR_SIGN.is_empty (VAR_SIGN.inter signs2 (VAR_SIGN.(empty |> add Neg))))
-           | Sign.Zero -> not (VAR_SIGN.is_empty (VAR_SIGN.inter signs2 (VAR_SIGN.(empty |> add Neg |> add Zero))))
-           | Sign.Pos -> not (VAR_SIGN.is_empty (VAR_SIGN.inter signs2 (VAR_SIGN.(empty |> add Neg |> add Zero |> add Pos))))
-           | Sign.Error -> false
-       in match signs1_elements with 
-         | [] -> false
-         | h :: q  when (aux h signs2) -> true
-         | h :: q -> ge q signs2
-  in let rec le signs1_elements signs2 = 
-       let aux sign signs2 = 
-         match sign with 
-           | Sign.Neg -> not (VAR_SIGN.is_empty (VAR_SIGN.inter signs2 (VAR_SIGN.(empty |> add Neg |> add Zero |> add Pos))))
-           | Sign.Zero -> not (VAR_SIGN.is_empty (VAR_SIGN.inter signs2 (VAR_SIGN.(empty |> add Zero |> add Pos))))
-           | Sign.Pos -> not (VAR_SIGN.is_empty (VAR_SIGN.inter signs2 (VAR_SIGN.(empty |> add Pos))))
-           | Sign.Error -> false
-       in match signs1_elements with 
-         | [] -> false
-         | h :: q  when (aux h signs2) -> true
-         | h :: q -> le q signs2
-  in let rec gt signs1_elements signs2 = 
-       let aux sign signs2 = 
-         match sign with 
-           | Sign.Neg -> not (VAR_SIGN.is_empty (VAR_SIGN.inter signs2 (VAR_SIGN.(empty |> add Neg))))
-           | Sign.Zero -> not (VAR_SIGN.is_empty (VAR_SIGN.inter signs2 (VAR_SIGN.(empty |> add Neg))))
-           | Sign.Pos -> not (VAR_SIGN.is_empty (VAR_SIGN.inter signs2 (VAR_SIGN.(empty |> add Neg |> add Zero |> add Pos))))
-           | Sign.Error -> false
-       in match signs1_elements with 
-         | [] -> false
-         | h :: q  when (aux h signs2) -> true
-         | h :: q -> gt q signs2
-  in match comp with 
-    | Eq -> deux_egaux (VAR_SIGN.elements (detect_sign expr1 env)) (detect_sign expr2 env)
-    | Ne -> not (deux_egaux (VAR_SIGN.elements (detect_sign expr1 env)) (detect_sign expr2 env))
-    | Lt -> lt (VAR_SIGN.elements (detect_sign expr1 env)) (detect_sign expr2 env)
-    | Ge -> ge (VAR_SIGN.elements (detect_sign expr1 env)) (detect_sign expr2 env)
-    | Le -> le (VAR_SIGN.elements (detect_sign expr1 env)) (detect_sign expr2 env)
-    | Gt -> gt (VAR_SIGN.elements (detect_sign expr1 env)) (detect_sign expr2 env)
-;;
-
-
-let rec isoler_variable (expr1, comparator, expr2) var_name env = 
-  let operation_inverse operateur = match operateur with 
-    | Add -> Neg
-    | Neg -> Add
-    | Mul -> Div
-    | Div -> Mul
-    | Mod -> failwith "Not Supposed to simplify mod"
-  in let rec var_in_expr expr var_name = match expr with 
-       | Num(n) -> false
-       | Var(a) when a = var_name -> true
-       | Var(a) -> false
-       | Op(operateur, expr1, expr2) -> (var_in_expr expr1 var_name) || (var_in_expr expr2 var_name)
-  in let variable_isolee expr var_name = match expr with 
-       | Var(a) when a = var_name -> true
-       | _ -> false
-  in let rec is_modulo_in_expr expr = match expr with
-       | Num(a) | Var(a) -> false
-       | Op(Mod, _, _) -> true
-       | Op(operateur, expr1, expr2) -> (is_modulo_in_expr expr1) || (is_modulo_in_expr expr2)
-  in let is_processable expr1 expr2 var_name = 
-       if ((var_in_expr expr1 var_name) && (is_modulo_in_expr expr1)) || ((var_in_expr expr2 var_name) && (is_modulo_in_expr expr2)) then false
-       else true
-  in let rec passer_op expr var_name env
-  and isoler (expr1, comparator, expr2) var_name env = 
-    if (variable_isolee expr1 var_name) || (variable_isolee expr2 var_name) then (expr1, comparator, expr2, env) 
-    else (match comparator with 
-           | Eq -> if (var_in_expr expr1 var_name) then 
-         )
-  in if not (is_processable expr1 expr2 var_name) then None else Some (isoler (expr1, comparator, expr2) var_name)
-;;
-
-let sign_evaluate_condition (expr1, comparator, expr2) env =
-  let rec initialise_env condition env = 
-    match condition with 
-      | Num(a) -> env
-      | Var(name) -> ENV.add name (VAR_SIGN.empty) env
-      | Op(operation, expr1, expr2) -> initialise_env expr2 (initialise_env (expr1) env)
-  in initialise_env expr2 (initialise_env expr1 ENV.empty);;
-
 
 let check_sign prog =
   let print_var_signs name signs = 
@@ -702,11 +593,9 @@ let check_sign prog =
        | [] -> env
        | (l, Read(name)) :: suite_prog -> interne suite_prog (ENV.add name VAR_SIGN.(empty |> add(Neg) |> add(Zero) |> add(Pos)) env)
        | (l, Set(name, expr)) :: suite_prog -> interne suite_prog (ENV.add name (detect_sign expr env) env)
-       (*| (l, If(cond, block1, block2)) :: suite_prog -> interne suite_prog (process_if cond block1 block2 env)*)
        | (l, If(cond, block1, block2)) :: suite_prog -> interne suite_prog (interne block2 (interne block1 env))
        | (l, While(cond, block)) :: suite_prog -> interne suite_prog (interne block env)
        | (l, Print(expr)) :: suite_prog -> interne suite_prog env
-  and process_if cond blockIF blockELSE env = merge_maps (if (satisfaisable cond env) then (interne blockIF (sign_evaluate_condition cond env)) else ENV.empty) (if (satisfaisable (neg_condition cond) env) then (interne blockELSE (sign_evaluate_condition (neg_condition cond) env)) else ENV.empty)
   in ENV.iter print_var_signs (interne prog ENV.empty)
 
 
@@ -716,11 +605,11 @@ let usage () =
 
 let main () =
   match Sys.argv with
-    | [|_;"-reprint";file|] -> print_polish (read_polish file)
-    | [|_;"-eval";file|] -> eval_polish (read_polish file)
-    | [|_;"-simpl";file|] -> print_polish (simpl_polish(read_polish file))
-    | [|_;"-vars";file|] -> vars(read_polish file)
-    | [|_;"-sign"; file|] -> check_sign(read_polish file)
+    | [|_;"--reprint";file|] -> print_polish (read_polish file)
+    | [|_;"--eval";file|] -> eval_polish (read_polish file)
+    | [|_;"--simpl";file|] -> print_polish (simpl_polish(read_polish file))
+    | [|_;"--vars";file|] -> vars(read_polish file)
+    | [|_; "--sign"; file|] -> check_sign(read_polish file)
     | _ -> usage ()
 
 (* lancement de ce main *)
