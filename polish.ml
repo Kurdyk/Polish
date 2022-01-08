@@ -60,7 +60,7 @@ struct
       | (Neg, Error) -> -10
       | (Zero, Neg) -> 1
       | (Zero, Zero) -> 0
-      | (Zero, Pos) -> 1
+      | (Zero, Pos) -> -1
       | (Zero, Error) -> -9
       | (Pos, Neg) -> 2
       | (Pos, Zero) -> 1
@@ -678,6 +678,10 @@ let neg_condition (expr1,comparator, expr2) = match comparator with
 ;;
 
 
+let varsign_of_list l =
+  List.fold_right VAR_SIGN.add l VAR_SIGN.empty;;
+
+
 let satisfaisable (expr1, comp, expr2) env =
   let rec deux_egaux signs1_elements signs2 = 
     match signs1_elements with 
@@ -738,13 +742,20 @@ let satisfaisable (expr1, comp, expr2) env =
 ;;
 
 
-let isoler_variable (expr1, comparator, expr2) var_name env = 
+let  isoler_variable (expr1, comparator, expr2) var_name env = 
   let operation_inverse operateur = match operateur with 
     | Add -> Sub
     | Sub -> Add
     | Mul -> Div
     | Div -> Mul
     | Mod -> failwith "Not Supposed to simplify mod"
+  in let comparateur_negatif comparator = match comparator with 
+       | Eq -> Eq 
+       | Ne -> Ne
+       | Le -> Ge
+       | Lt -> Gt
+       | Gt -> Lt
+       | Ge -> Le
   in let rec var_in_expr expr var_name = match expr with 
        | Num(n) -> false
        | Var(a) when a = var_name -> true
@@ -761,22 +772,95 @@ let isoler_variable (expr1, comparator, expr2) var_name env =
   in let is_processable expr1 expr2 var_name = 
        if ((var_in_expr expr1 var_name) && (is_modulo_in_expr expr1)) || ((var_in_expr expr2 var_name) && (is_modulo_in_expr expr2)) then false
        else true
-  (*in let rec passer_op expr var_name env*)
-  and isoler (expr1, comparator, expr2) var_name env = 
-    if (variable_isolee expr1 var_name) || (variable_isolee expr2 var_name) then (expr1, comparator, expr2, env) 
-    else (match comparator with 
-           | _ -> if (var_in_expr expr1 var_name) then (expr1, comparator, expr2, env) else (expr1, comparator, expr2, env)
-         )
-  in if not (is_processable expr1 expr2 var_name) then None else Some (isoler (expr1, comparator, expr2) var_name)
+
+  in let preformat_condition (expr1, comparator, expr2) var_name = 
+       if var_in_expr expr1 var_name then (expr1, comparator, (detect_sign expr2 env))
+       else if var_in_expr expr2 var_name then (expr2, (comparateur_negatif comparator), (detect_sign expr1 env))
+       else failwith "Unable to find variable in expression"
+  in let simplify_comparator comparator signs = 
+       let rec aux comparator l = 
+         match (l, comparator) with 
+           | ([], _) -> VAR_SIGN.empty
+
+           | (Sign.Pos :: q, Gt) | (Sign.Pos :: q, Ge) -> (aux comparator q) |> VAR_SIGN.add(Pos)
+           | (Sign.Pos :: q, Lt) -> (aux comparator q) |> VAR_SIGN.add(Neg) |> VAR_SIGN.add(Zero)
+           | (Sign.Pos :: q, Le) -> (aux comparator q) |> VAR_SIGN.add(Neg) |> VAR_SIGN.add(Zero) |> VAR_SIGN.add(Pos)
+
+           | (Sign.Zero :: q, Lt) -> (aux comparator q) |> VAR_SIGN.add(Neg)
+           | (Sign.Zero :: q, Le) -> (aux comparator q) |> VAR_SIGN.add(Neg) |> VAR_SIGN.add(Zero)
+           | (Sign.Zero :: q, Gt) -> (aux comparator q) |> VAR_SIGN.add(Pos)
+           | (Sign.Zero :: q, Ge) -> (aux comparator q) |> VAR_SIGN.add(Zero) |> VAR_SIGN.add(Pos)
+
+           | (Sign.Neg :: q, Lt) | (Sign.Neg :: q, Le) -> (aux comparator q) |> VAR_SIGN.add(Neg)
+           | (Sign.Neg :: q, Gt) -> (aux comparator q) |> VAR_SIGN.add(Zero) |> VAR_SIGN.add(Pos)
+           | (Sign.Neg :: q, Ge) -> (aux comparator q) |> VAR_SIGN.add(Neg) |> VAR_SIGN.add(Zero) |> VAR_SIGN.add(Pos)
+
+           | (Error :: q, _) -> aux comparator q
+
+           | (_, _) -> failwith "Une valeur incorrecte dans simplify_comparator"
+       in match comparator with 
+         | Eq | Ne -> (comparator, signs)
+         | _ -> (Eq, aux comparator (VAR_SIGN.elements signs)) 
+  in let reformat_expression expr signs var_name = match expr with
+       | Op(Sub, sexpr1, sexpr2) -> if var_in_expr sexpr1 var_name then (expr, signs) else (Op(Add, Op(Mul, sexpr2, Num(-1)), sexpr1), signs)
+       | Op(Div, sexpr1, sexpr2) -> if var_in_expr sexpr1 var_name then (expr, signs) else (Op(Mul, sexpr2, Op(Div, Num(1), sexpr1)), VAR_SIGN.remove Zero signs)
+       | Op(op, sexpr1, sexpr2) -> if var_in_expr sexpr1 var_name then (expr, signs) else (Op(op, sexpr2, sexpr1), signs)
+       | _ -> failwith "Autre chose qu'une operation dans reformat_expression"
+
+  in let rec isoler (expr1, comparator, signs) var_name =
+       if variable_isolee expr1 var_name then (expr1, comparator, signs)
+       else (
+         match reformat_expression expr1 signs var_name with 
+           | (Num(a), _) -> failwith "Erreur : expression innatendue"
+           | (Var(a), _) -> failwith "Erreur : expression innatendue"
+           | (Op(operator, sexpr1, sexpr2), nsigns) -> 
+               let possible = detect_sign sexpr2 env in 
+                 isoler (sexpr1, comparator, (combine_possibilities (operation_inverse operator) nsigns possible)) var_name
+       )
+  in let extract_constraint comparator signs env var_name = 
+       let rec aux signs bsigns = 
+         match signs with 
+           | [] -> VAR_SIGN.empty
+           | h :: q when VAR_SIGN.mem h bsigns -> (aux q bsigns) |> VAR_SIGN.add h
+           | h :: q -> aux q bsigns
+       in match comparator with 
+         | Eq -> aux (VAR_SIGN.elements signs) (ENV.find var_name env)
+         | Ne -> aux (VAR_SIGN.elements (if VAR_SIGN.equal signs (VAR_SIGN.(empty |> add Zero)) then VAR_SIGN.(empty |> add Neg |> add Pos) else VAR_SIGN.(empty |> add Neg |> add Zero |> add Pos))) (ENV.find var_name env)
+         | _ -> failwith "Please simplify condition"
+  in let (pexpr1, pcomp, psigns) = preformat_condition (expr1, comparator, expr2) var_name in
+  let (scomp, ssigns) = simplify_comparator pcomp psigns in
+  let (_, fcomp, fsigns) = isoler (pexpr1, scomp, ssigns) var_name
+  in extract_constraint fcomp fsigns env var_name
 ;;
 
-let sign_evaluate_condition (expr1, comparator, expr2) env =
+
+let print_env_sign env = 
+  let get_keys map = 
+    let rec interne bindings = match bindings with 
+      | [] -> []
+      | (k, v) :: q -> k :: interne q
+    in interne (ENV.bindings map)
+  in let rec af l = match l with 
+       | [] -> printf "\n"
+       | Sign.Neg :: q -> printf "-"; af q
+       | Sign.Zero :: q  -> printf "0"; af q
+       | Sign.Pos :: q -> printf "+"; af q
+       | Sign.Error :: q -> printf "!"; af q
+  in let rec pr l = match l with 
+       | [] -> ()
+       | h :: q -> printf "%s " h; af (VAR_SIGN.elements (ENV.find h env)); pr q
+  in pr (get_keys env)
+
+
+let sign_evaluate_condition (expr1, comparator, expr2) env_o =
   let rec initialise_env condition env = 
     match condition with 
       | Num(a) -> env
-      | Var(name) -> ENV.add name (VAR_SIGN.empty) env
+      | Var(name) -> ENV.add name (isoler_variable (expr1, comparator, expr2) name env_o) env
       | Op(operation, expr1, expr2) -> initialise_env expr2 (initialise_env (expr1) env)
-  in initialise_env expr2 (initialise_env expr1 ENV.empty);;
+  in ENV.union (fun key elm1 elm2 -> Some(elm2)) env_o (initialise_env expr2 (initialise_env expr1 ENV.empty)) 
+;;
+
 
 
 
@@ -793,17 +877,16 @@ let check_sign prog =
        | [] -> env
        | (l, Read(name)) :: suite_prog -> interne suite_prog (ENV.add name VAR_SIGN.(empty |> add(Neg) |> add(Zero) |> add(Pos)) env)
        | (l, Set(name, expr)) :: suite_prog -> interne suite_prog (ENV.add name (detect_sign expr env) env)
-       (*| (l, If(cond, block1, block2)) :: suite_prog -> interne suite_prog (process_if cond block1 block2 env)*)
-       | (l, If(cond, block1, block2)) :: suite_prog -> interne suite_prog (interne block2 (interne block1 env))
-       | (l, While(cond, block)) :: suite_prog -> interne suite_prog (interne block env)
+       | (l, If(cond, block1, block2)) :: suite_prog -> interne suite_prog (merge_maps (interne block1 (sign_evaluate_condition cond env)) (interne block2 (sign_evaluate_condition (neg_condition cond) env)))
+       | (l, While(cond, block)) :: suite_prog -> interne suite_prog (interne block (sign_evaluate_condition (neg_condition cond) env))
        | (l, Print(expr)) :: suite_prog -> interne suite_prog env
   and process_if cond blockIF blockELSE env = 
     merge_maps (if (satisfaisable cond env) 
-    then (interne blockIF (sign_evaluate_condition cond env)) else ENV.empty) 
-    (if (satisfaisable (neg_condition cond)env) 
-    then (interne blockELSE (sign_evaluate_condition (neg_condition cond) env)) else ENV.empty)
+                then (interne blockIF (sign_evaluate_condition cond env)) else ENV.empty) 
+      (if (satisfaisable (neg_condition cond)env) 
+       then (interne blockELSE (sign_evaluate_condition (neg_condition cond) env)) else ENV.empty)
 
-  in ENV.iter print_var_signs (interne prog ENV.empty)
+  in print_env_sign (interne prog ENV.empty)
 
 let usage () =
   print_string "Polish : analyse statique d'un mini-langage\n";
