@@ -1,15 +1,10 @@
 open Types
 open Printf
 
-let rec read_file channel current = 
-  try
-    let line = input_line channel in
-      (current, line) :: read_file channel (current + 1)
-  with End_of_file -> 
-    close_in_noerr channel;
-    []
-;;
 
+
+
+(** Renvoie `true` si la chaine de caractère passée en paramètre représente une donnée numérique *)
 let is_numeric str = 
   try
     let _ = int_of_string str in
@@ -17,10 +12,20 @@ let is_numeric str =
   with Failure _ -> false
 ;;
 
+(** Retire d'une liste de chaines de caractères toutes les chaines vides *)
 let purifier liste = List.filter (fun k -> k <> "") liste;;
 
-let check_expression_validity expression n = if List.length expression = 1 then List.hd expression else match List.hd (List.tl expression) with | Num(a) -> printf "Exception: Line %d, unexpected argument \"%d\"\n" n a; exit 1; | Var(a) -> printf "Exception: Line %d, unexpected argument \"%s\"\n" n a; exit 1; |_ -> printf "Exception: Line %d, cannot parse expression; unknown error\n" n; exit 1;;
+(** S'assure de la validité d'une expression Polish sous la forme d'une liste de chaines de caractères avant de la parser *)
+let check_expression_validity expression n = 
+if List.length expression = 1 
+then List.hd expression 
+else match List.hd (List.tl expression) with 
+| Num(a) -> printf "Exception: Line %d, unexpected argument \"%d\"\n" n a; exit 1; 
+| Var(a) -> printf "Exception: Line %d, unexpected argument \"%s\"\n" n a; exit 1; 
+|_ -> printf "Exception: Line %d, cannot parse expression; unknown error\n" n; exit 1;;
 
+(** Parse une expression Polish sous la forme d'une liste de chaines de caractères en sa représentation Ocaml.
+Permet de détecter les erreurs de syntaxe dans les expressions Polish*)
 let get_expression exp n =
   let rec auxiliaire exp n = match exp with 
     | [] -> []
@@ -54,10 +59,11 @@ let get_expression exp n =
   in check_expression_validity (auxiliaire exp n) n
 ;;
 
-
+(** Liste des opérateurs de comparaison Polish *)
 let operators = ["="; "<>"; "<"; "<="; ">"; ">="]
 
 
+(** Permet de séparer une conditon Polish sous la forme d'une liste de chaines de caractères en fonction de l'opérateur de comparaison. *)
 let split_on_operator condition = 
   let rec interne cond expr1 = match cond with
     | [] -> ([], "", [])
@@ -67,6 +73,7 @@ let split_on_operator condition =
 ;;
 
 
+(** Prend en paramètre une chaine de caractères et retourne une représentation Ocaml de la condition Polish contenue dedans *)
 let get_condition condition line= let (expr1, operator, expr2) = split_on_operator condition in 
     match operator with 
       | "=" -> (get_expression expr1 line, Eq, get_expression expr2 line)
@@ -79,11 +86,13 @@ let get_condition condition line= let (expr1, operator, expr2) = split_on_operat
 ;;
 
 
-let rec calcul_indent line = match line with 
+(** Calcule l'indentation d'une ligne *) 
+let rec calcul_indent line = match line with
   | "" :: q -> 1 + calcul_indent q 
   | _ -> 0
 ;;
 
+(** Renvoie le bloc `ELSE` associé à un bloc `IF` si il existe *)
 let rec search_for_else lines current_indent = match lines with
   | [] -> []
   | (n, l) :: lines_queue -> let line = (String.split_on_char ' ' l) in
@@ -94,7 +103,10 @@ let rec search_for_else lines current_indent = match lines with
 ;;
 
 
+(** Prend en paramètre une liste (numero de ligne, contenu de la ligne) et renvoie la représentation du programme en Ocaml*)
 let read_lines lines = 
+  (* Parcours la liste de ligne et demande la conversion de la ligne à `convert_line` en s'assurant de la cohérence de l'indentation.
+  S'assure également de la légalité du mot clé `ELSE` (y a-t-il un `IF` juste avant) et filtre les commentaires *)
   let rec aux lines current_indent allow_else =
     (match lines with
       | [] -> []
@@ -105,6 +117,7 @@ let read_lines lines =
             else if indent > current_indent then aux lines_queue current_indent allow_else
             else [])
 
+  (* Converti une chaine de caractères en représentation Ocaml de l'instruction Polish *)
   and convert_line line current_indent prog_continuation n = 
     (match purifier line with 
       | "PRINT"::r -> Print(get_expression (purifier r) n)
@@ -112,13 +125,25 @@ let read_lines lines =
       | "READ" :: q -> printf "Syntax error: Line %d, READ method does not allow multiple parameters\n" n; exit 1;
       | "WHILE" :: q -> While(get_condition q n, aux prog_continuation (current_indent + 2) false)
       | "IF" :: q -> If(get_condition q n, aux prog_continuation (current_indent + 2) false, aux (search_for_else prog_continuation (current_indent + 2)) (current_indent + 2) false)
-      | "ELSE" :: q -> printf "Syntax error: Lune %d, found ELSE keyword, but no IF were found before\n" n; exit 1;
+      (* Le ELSE n'est pas traité ici mais dans la fonction search_for_else pour s'assurer que sa présence n'est pas illégale*)
+      | "ELSE" :: q -> printf "Syntax error: Line %d, found ELSE keyword, but no IF were found before\n" n; exit 1;
       | h :: ":=" :: q -> Set(h, get_expression (purifier q) n) (* cette ligne doit être à la fin du match*)
       | _ -> Read("a"))
   in aux lines 0 false
 ;;
 
 
+(** Prend en paramètre un channel et renvoie une liste de (numero de ligne, contenu de la ligne) de ce channel*)
+let rec read_file channel current = 
+  try
+    let line = input_line channel in
+      (current, line) :: read_file channel (current + 1)
+  with End_of_file -> 
+    close_in_noerr channel;
+    []
+;;
+
+(** Prend un paramètre un nom de fichier et renvoie la représentation du programme polish en Ocaml*)
 let read_polish (filename:string) : program =
   let ic = open_in filename in 
   let file = read_file ic 0 in 

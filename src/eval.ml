@@ -2,6 +2,7 @@ open Types
 open Printf
 open Misc
 
+(** Evalue la représentation Ocaml d'une expression Polish et renvoie sa valeur *)
 let rec eval_expr expr env l = match expr with 
   | Num(a) -> a
   | Var(v) -> get_variable v env l
@@ -13,6 +14,7 @@ let rec eval_expr expr env l = match expr with
     | Mod -> let divider = (eval_expr expr2 env l) in if divider = 0 then begin printf "Exception: Line %d, division by 0\n" l; exit 1 end else (eval_expr expr1 env l) mod divider
 ;;
 
+(** Evalue la représentation Ocaml d'une condition et renvoie si elle est vraie ou non *)
 let eval_condition (expr1, comparator, expr2) env l = match comparator with 
   | Eq -> (eval_expr expr1 env l) = (eval_expr expr2 env l)
   | Ne -> (eval_expr expr1 env l) <> (eval_expr expr2 env l)
@@ -22,7 +24,7 @@ let eval_condition (expr1, comparator, expr2) env l = match comparator with
   | Ge -> (eval_expr expr1 env l) >= (eval_expr expr2 env l)
 
 
-
+(** Affiche la valeur de la représentation Ocaml d'une expression. Calcule cette valeur au besoin, grace à `eval_expr` *)
 let print_expression expr env l = 
   match expr with 
     | Num(n) -> printf "%d\n" n
@@ -31,15 +33,18 @@ let print_expression expr env l =
 ;;
 
 
+(** Demande à l'utilisateur de saisir une valeur et l'enregistre dans l'environnement d'execution *)
 let read_variable n env l = 
   printf "%s? " n; 
   let saisie = read_int () in 
     ENV.add n saisie env;;
 
+
+(** Permet de ne pas tenir compte de la valeur de retour d'une fonction *)
 let masquer_retour retour = ();;
 
 
-
+(** Fonction principale, permet de lancer l'execution d'un programme Polish (en représentation Ocaml) *)
 let eval_polish (p:program) =
   let rec process_while condition block env l = 
     if eval_condition condition env l then begin let new_env = parcours_programme block env in process_while condition block new_env l end else env
