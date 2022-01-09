@@ -1,13 +1,18 @@
 open Types
 open Printf
 
+(**Fonction appelée par l'option -reprint.
+   Affiche un programme polish sur la sortie du programme.
+*)
 let print_polish (p:program) : unit = 
 
   let rec print_indent (current_block:int) : unit =
+    (*Gère l'indentation de chaque ligne*)
     if current_block <= 0 then () else begin printf "  "; print_indent (current_block - 1) end; 
   in
 
   let rec print_expr (expression:expr) : unit =
+    (*Affiche une expression arithmétique*)
     match expression with 
       | Num(x) -> printf "%s " (string_of_int x);
       | Var(name) -> printf "%s " (name)
@@ -20,6 +25,7 @@ let print_polish (p:program) : unit =
   in
 
   let print_condi condi = 
+    (*Affiche une condition*)
     match condi with 
       | (expr1, Eq, expr2) -> print_expr expr1; printf "= "; print_expr expr2;
       | (expr1, Ne, expr2) -> print_expr expr1; printf "<> "; print_expr expr2; (* Not equal, <> *)
@@ -31,6 +37,7 @@ let print_polish (p:program) : unit =
   in 
 
   let rec print_instr (instruc:instr) (current_block:int) : unit = 
+    (*Affiche une instruction*)
     match instruc with
       | Set(name,expr) -> print_indent current_block;
           printf "%s" (name ^ " := "); print_expr expr; 
@@ -41,12 +48,14 @@ let print_polish (p:program) : unit =
       | While(cond, block) -> print_indent current_block; printf "WHILE " ;
           print_condi cond; printf "\n" ;interne (current_block + 1) block;
       | If(cond, block1, block2) -> match block2 with 
+        (*Si le bloc2 est vide pas besoin d'afficher le ELSE*)
         | [] -> print_indent current_block;
             printf "%s" "IF "; print_condi cond; printf "\n" ; interne (current_block + 1) block1;
         | block2 -> print_indent current_block;
             printf "%s" "IF "; print_condi cond; printf "\n" ; interne (current_block + 1) block1;
             printf "\n"; print_indent current_block; printf "ELSE\n"; interne (current_block + 1) block2; 
   and interne (current_block:int) (lp:program) : unit =
+    (*Fonction principale : lit un programme et l'affiche sur la sortie du programme*)
     match lp with 
       | [] -> ()
       | h::[] -> print_instr (snd h) current_block;
