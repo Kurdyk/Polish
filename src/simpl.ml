@@ -43,20 +43,20 @@ let simpl_polish (p:program) =
                                     | Mul -> Num(x * y)
                                     | Div -> Num(x / y)
                                     | Mod -> Num(x mod y))
-      | Op(op, Var(name1), Num(y)) -> (match op with 
-                                        | Add -> if y = 0 then Var(name1) else Op(op, Var(name1), Num(y))
-                                        | Mul -> if y = 1 then Var(name1) else 
-                                            if y = 0 then Num 0 else Op(op, Var(name1), Num(y))
-                                        | Div -> if y = 1 then Var(name1) else Op(op, Var(name1), Num(y))
-                                        | _ -> Op(op, Var(name1), Num(y)))
-      | Op(op, Num(x), Var(name2)) -> (match op with 
-                                        | Add -> if x = 0 then Var(name2) else Op(op, Num(x) , Var(name2))
-                                        | Mul -> if x = 1 then Var(name2) else 
-                                            if x = 0 then Num 0 else Op(op, Num(x) , Var(name2))
-                                        | Div -> if x = 0 then Num 0 else Op(op, Num(x) , Var(name2))
-                                        | _ -> Op(op, Num(x) , Var(name2)))
+            | Op(op, expr1, Num(y)) -> (match op with 
+                                   | Add -> if y = 0 then simpl_expr_ari expr1 else Op(op, simpl_expr_ari expr1, Num(y))
+                                   | Mul -> if y = 1 then simpl_expr_ari expr1 else 
+                                       if y = 0 then Num 0 else Op(op, simpl_expr_ari expr1, Num(y))
+                                   | Div -> if y = 1 then simpl_expr_ari expr1 else Op(op, simpl_expr_ari expr1, Num(y))
+                                   | _ -> Op(op, simpl_expr_ari expr1, Num(y)))
+      | Op(op, Num(x), expr2) -> (match op with 
+                                   | Add -> if x = 0 then simpl_expr_ari expr2 else Op(op, Num(x) , simpl_expr_ari expr2)
+                                   | Mul -> if x = 1 then simpl_expr_ari expr2 else 
+                                       if x = 0 then Num 0 else Op(op, Num(x) ,simpl_expr_ari expr2)
+                                   | Div -> if x = 0 then Num 0 else Op(op, Num(x) , simpl_expr_ari expr2)
+                                   | _ -> Op(op, Num(x) , simpl_expr_ari expr2))
       | Op(op, Var(name1), Var(name2)) -> Op(op, Var(name1), Var(name2))
-      | Op(op, expr1, expr2) -> simpl_expr_ari (Op(op, simpl_expr_ari expr1, simpl_expr_ari expr2))
+      | Op(op, expr1, expr2) -> Op(op, simpl_expr_ari expr1, simpl_expr_ari expr2)
   in
 
   let simpl_cond cond = match cond with
