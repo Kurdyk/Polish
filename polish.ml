@@ -94,6 +94,8 @@ let is_numeric str =
   with Failure _ -> false
 ;;
 
+let first_division_by_0 = ref (-1) ;;
+
 
 let var_exists name env = ENV.mem name env;;
 
@@ -324,8 +326,8 @@ let eval_polish (p:program) =
 
 
 
-
 let simpl_polish (p:program) = 
+
 
   let rec var_in expr =
     match expr with 
@@ -357,8 +359,6 @@ let simpl_polish (p:program) =
 
   in
 
-
-
   let rec simpl_expr_ari(expr_init:expr) =
     match expr_init with 
       | Num(x) -> Num(x)
@@ -369,21 +369,20 @@ let simpl_polish (p:program) =
                                     | Mul -> Num(x * y)
                                     | Div -> Num(x / y)
                                     | Mod -> Num(x mod y))
-      | Op(op, expr1, Num(y)) -> (match op with 
-                                   | Add -> if y = 0 then simpl_expr_ari expr1 else Op(op, simpl_expr_ari expr1, Num(y))
-                                   | Mul -> if y = 1 then simpl_expr_ari expr1 else 
-                                       if y = 0 then Num 0 else Op(op, simpl_expr_ari expr1, Num(y))
-                                   | Div -> if y = 1 then simpl_expr_ari expr1 else Op(op, simpl_expr_ari expr1, Num(y))
-                                   | _ -> Op(op, simpl_expr_ari expr1, Num(y)))
-      | Op(op, Num(x), expr2) -> (match op with 
-                                   | Add -> if x = 0 then simpl_expr_ari expr2 else Op(op, Num(x) , simpl_expr_ari expr2)
-                                   | Mul -> if x = 1 then simpl_expr_ari expr2 else 
-                                       if x = 0 then Num 0 else Op(op, Num(x) ,simpl_expr_ari expr2)
-                                   | Div -> if x = 0 then Num 0 else Op(op, Num(x) , simpl_expr_ari expr2)
-                                   | _ -> Op(op, Num(x) , simpl_expr_ari expr2))
+      | Op(op, Var(name1), Num(y)) -> (match op with 
+                                        | Add -> if y = 0 then Var(name1) else Op(op, Var(name1), Num(y))
+                                        | Mul -> if y = 1 then Var(name1) else 
+                                            if y = 0 then Num 0 else Op(op, Var(name1), Num(y))
+                                        | Div -> if y = 1 then Var(name1) else Op(op, Var(name1), Num(y))
+                                        | _ -> Op(op, Var(name1), Num(y)))
+      | Op(op, Num(x), Var(name2)) -> (match op with 
+                                        | Add -> if x = 0 then Var(name2) else Op(op, Num(x) , Var(name2))
+                                        | Mul -> if x = 1 then Var(name2) else 
+                                            if x = 0 then Num 0 else Op(op, Num(x) , Var(name2))
+                                        | Div -> if x = 0 then Num 0 else Op(op, Num(x) , Var(name2))
+                                        | _ -> Op(op, Num(x) , Var(name2)))
       | Op(op, Var(name1), Var(name2)) -> Op(op, Var(name1), Var(name2))
-      | Op(op, expr1, expr2) -> Op(op, simpl_expr_ari expr1, simpl_expr_ari expr2)
-
+      | Op(op, expr1, expr2) -> simpl_expr_ari (Op(op, simpl_expr_ari expr1, simpl_expr_ari expr2))
   in
 
   let simpl_cond cond = match cond with
@@ -443,7 +442,7 @@ let simpl_polish (p:program) =
                           (ENV.add name expr_s env_const) 
                           (List.append acc [pos, Set(name, expr_s)]) 
                           in_while
-                | l ->let expr_final = simpl_with_const expr_s env_const in 
+                | l -> let expr_final = simpl_with_const expr_s env_const in 
                       if List.for_all (fun x -> ENV.mem x env_const) l && not in_while
                       then find_const
                              t 
@@ -456,7 +455,7 @@ let simpl_polish (p:program) =
                           (ENV.remove name env_const)
                           (List.append acc [pos, Set(name, simpl_with_const expr_s (ENV.remove name env_const))]) 
                           in_while
-                      else
+                      else 
                         find_const
                           t
                           (ENV.add name expr_s env_const) 
@@ -511,7 +510,6 @@ let simpl_polish (p:program) =
 
   in reline(fst (find_const p ENV.empty [] false)) 0 []
 ;; 
-
 
 
 let vars (p:program) =
@@ -600,37 +598,38 @@ let vars (p:program) =
   in print_env (fst_t env_triplet); printf "\n"; print_env (snd_t env_triplet); printf "\n"
 ;;
 
+let tell_division_by_zero l = if !first_division_by_0 = (-1) then first_division_by_0 := l else ();;
 
 
 let ajouter_dans_set varname value env = ENV.update varname (fun x -> match x with | None -> None | Some a -> Some(VAR_SIGN.union value a)) env
 let get_possible_signs varname env = ENV.find varname env;;
 let nswoe element = (VAR_SIGN.add element (VAR_SIGN.empty))
 
-let combine_possibilities operation expr1 expr2 = 
+let combine_possibilities operation expr1 expr2 l = 
   let compute_comb operation sign1 sign2 = match (operation, sign1, sign2) with 
-    | (Add, _, Sign.Error) | (Add, Sign.Error, _) -> VAR_SIGN.(empty |> add(Error))
+    | (Add, _, Sign.Error) | (Add, Sign.Error, _) -> tell_division_by_zero l; VAR_SIGN.(empty |> add(Error))
     | (Add, Sign.Neg, Sign.Neg) | (Add, Sign.Neg, Sign.Zero) | (Add, Sign.Zero, Sign.Neg) -> VAR_SIGN.(empty |> add(Neg))
     | (Add, Sign.Pos, Sign.Pos) | (Add, Sign.Pos, Sign.Zero) | (Add, Sign.Zero, Sign.Pos) -> VAR_SIGN.(empty |> add(Pos))
     | (Add, Sign.Zero, Sign.Zero) -> VAR_SIGN.(empty |> add(Zero))
     | (Add, _, _) -> VAR_SIGN.(empty |> add(Neg) |> add(Zero) |> add(Pos))
 
-    | (Sub, _, Sign.Error) | (Sub, Sign.Error, _) -> VAR_SIGN.(empty |> add(Error))
+    | (Sub, _, Sign.Error) | (Sub, Sign.Error, _) -> tell_division_by_zero l; VAR_SIGN.(empty |> add(Error))
     | (Sub, Sign.Neg, Sign.Pos) | (Sub, Sign.Neg, Sign.Zero) | (Sub, Sign.Zero, Sign.Pos) -> VAR_SIGN.(empty |> add(Neg))
     | (Sub, Sign.Pos, Sign.Neg) | (Sub, Sign.Pos, Sign.Zero) | (Sub, Sign.Zero, Sign.Neg) -> VAR_SIGN.(empty |> add(Pos))
     | (Sub, Sign.Zero, Sign.Zero) -> VAR_SIGN.(empty |> add(Zero))
     | (Sub, _, _) -> VAR_SIGN.(empty |> add(Neg) |> add(Zero) |> add(Pos))
 
-    | (Mul, _, Sign.Error) | (Mul, Sign.Error, _) -> VAR_SIGN.(empty |> add(Error))
+    | (Mul, _, Sign.Error) | (Mul, Sign.Error, _) -> tell_division_by_zero l; VAR_SIGN.(empty |> add(Error))
     | (Mul, Sign.Pos, Sign.Neg) | (Mul, Sign.Neg, Sign.Pos) -> VAR_SIGN.(empty |> add(Neg))
     | (Mul, Sign.Pos, Sign.Pos) | (Mul, Sign.Neg, Sign.Neg) -> VAR_SIGN.(empty |> add(Pos))
     | (Mul, Sign.Zero, _) | (Mul, _, Sign.Zero) -> VAR_SIGN.(empty |> add(Zero))
 
-    | (Div, _, Sign.Error) | (Div, Sign.Error, _) | (Div, _, Sign.Zero) -> VAR_SIGN.(empty |> add(Error))
+    | (Div, _, Sign.Error) | (Div, Sign.Error, _) | (Div, _, Sign.Zero) -> tell_division_by_zero l; VAR_SIGN.(empty |> add(Error))
     | (Div, Sign.Pos, Sign.Neg) | (Div, Sign.Neg, Sign.Pos) -> VAR_SIGN.(empty |> add(Neg))
     | (Div, Sign.Pos, Sign.Pos) | (Div, Sign.Neg, Sign.Neg) -> VAR_SIGN.(empty |> add(Pos))
     | (Div, Sign.Zero, _) -> VAR_SIGN.(empty |> add(Zero))
 
-    | (Mod, _, Sign.Error) | (Mod, Sign.Error, _) | (Mod, _, Sign.Zero) -> VAR_SIGN.(empty |> add(Error))
+    | (Mod, _, Sign.Error) | (Mod, Sign.Error, _) | (Mod, _, Sign.Zero) -> tell_division_by_zero l; VAR_SIGN.(empty |> add(Error))
     | (Mod, _, _) -> VAR_SIGN.(empty |> add(Pos))
 
   in let rec comb2 operation sign1 sign2_list env = 
@@ -644,12 +643,12 @@ let combine_possibilities operation expr1 expr2 =
   in comb1 operation (VAR_SIGN.elements expr1) (VAR_SIGN.elements expr2) VAR_SIGN.empty
 ;;
 
-let rec detect_sign expr env = match expr with 
+let rec detect_sign expr env l = match expr with 
   | Num(a) -> if a < 0 then VAR_SIGN.(empty |> add(Neg))
       else if a = 0 then VAR_SIGN.(empty |> add(Zero))
       else VAR_SIGN.(empty |> add(Pos))
   | Var(v) -> get_possible_signs v env
-  | Op(operation, expr1, expr2) -> combine_possibilities operation (detect_sign expr1 env) (detect_sign expr2 env)
+  | Op(operation, expr1, expr2) -> combine_possibilities operation (detect_sign expr1 env l) (detect_sign expr2 env l) l
 ;;
 
 let merge_maps map1 map2 = 
@@ -686,7 +685,7 @@ let varsign_of_list l =
   List.fold_right VAR_SIGN.add l VAR_SIGN.empty;;
 
 
-let satisfaisable (expr1, comp, expr2) env =
+let satisfaisable (expr1, comp, expr2) env l =
   let rec deux_egaux signs1_elements signs2 = 
     match signs1_elements with 
       | [] -> false
@@ -737,16 +736,16 @@ let satisfaisable (expr1, comp, expr2) env =
          | h :: q  when (aux h signs2) -> true
          | h :: q -> gt q signs2
   in match comp with 
-    | Eq -> deux_egaux (VAR_SIGN.elements (detect_sign expr1 env)) (detect_sign expr2 env)
-    | Ne -> not (deux_egaux (VAR_SIGN.elements (detect_sign expr1 env)) (detect_sign expr2 env))
-    | Lt -> lt (VAR_SIGN.elements (detect_sign expr1 env)) (detect_sign expr2 env)
-    | Ge -> ge (VAR_SIGN.elements (detect_sign expr1 env)) (detect_sign expr2 env)
-    | Le -> le (VAR_SIGN.elements (detect_sign expr1 env)) (detect_sign expr2 env)
-    | Gt -> gt (VAR_SIGN.elements (detect_sign expr1 env)) (detect_sign expr2 env)
+    | Eq -> deux_egaux (VAR_SIGN.elements (detect_sign expr1 env l)) (detect_sign expr2 env l)
+    | Ne -> not (deux_egaux (VAR_SIGN.elements (detect_sign expr1 env l)) (detect_sign expr2 env l))
+    | Lt -> lt (VAR_SIGN.elements (detect_sign expr1 env l)) (detect_sign expr2 env l)
+    | Ge -> ge (VAR_SIGN.elements (detect_sign expr1 env l)) (detect_sign expr2 env l)
+    | Le -> le (VAR_SIGN.elements (detect_sign expr1 env l)) (detect_sign expr2 env l)
+    | Gt -> gt (VAR_SIGN.elements (detect_sign expr1 env l)) (detect_sign expr2 env l)
 ;;
 
 
-let  isoler_variable (expr1, comparator, expr2) var_name env = 
+let  isoler_variable (expr1, comparator, expr2) var_name env l = 
   let operation_inverse operateur = match operateur with 
     | Add -> Sub
     | Sub -> Add
@@ -768,18 +767,12 @@ let  isoler_variable (expr1, comparator, expr2) var_name env =
   in let variable_isolee expr var_name = match expr with 
        | Var(a) when a = var_name -> true
        | _ -> false
-  in let rec is_modulo_in_expr expr = match expr with
-       | Num(a) -> false
-       | Var(a) -> false
-       | Op(Mod, _, _) -> true
-       | Op(operateur, expr1, expr2) -> (is_modulo_in_expr expr1) || (is_modulo_in_expr expr2)
   in let is_processable expr1 expr2 var_name = 
-       if ((var_in_expr expr1 var_name) && (is_modulo_in_expr expr1)) || ((var_in_expr expr2 var_name) && (is_modulo_in_expr expr2)) then false
-       else true
+       ((var_in_expr expr1 var_name)  || (var_in_expr expr2 var_name))
 
   in let preformat_condition (expr1, comparator, expr2) var_name = 
-       if var_in_expr expr1 var_name then (expr1, comparator, (detect_sign expr2 env))
-       else if var_in_expr expr2 var_name then (expr2, (comparateur_negatif comparator), (detect_sign expr1 env))
+       if var_in_expr expr1 var_name then (expr1, comparator, (detect_sign expr2 env l))
+       else if var_in_expr expr2 var_name then (expr2, (comparateur_negatif comparator), (detect_sign expr1 env l))
        else failwith "Unable to find variable in expression"
   in let simplify_comparator comparator signs = 
        let rec aux comparator l = 
@@ -787,8 +780,7 @@ let  isoler_variable (expr1, comparator, expr2) var_name env =
            | ([], _) -> VAR_SIGN.empty
 
            | (Sign.Pos :: q, Gt) | (Sign.Pos :: q, Ge) -> (aux comparator q) |> VAR_SIGN.add(Pos)
-           | (Sign.Pos :: q, Lt) -> (aux comparator q) |> VAR_SIGN.add(Neg) |> VAR_SIGN.add(Zero)
-           | (Sign.Pos :: q, Le) -> (aux comparator q) |> VAR_SIGN.add(Neg) |> VAR_SIGN.add(Zero) |> VAR_SIGN.add(Pos)
+           | (Sign.Pos :: q, Le) | (Sign.Pos :: q, Lt)-> (aux comparator q) |> VAR_SIGN.add(Neg) |> VAR_SIGN.add(Zero) |> VAR_SIGN.add(Pos)
 
            | (Sign.Zero :: q, Lt) -> (aux comparator q) |> VAR_SIGN.add(Neg)
            | (Sign.Zero :: q, Le) -> (aux comparator q) |> VAR_SIGN.add(Neg) |> VAR_SIGN.add(Zero)
@@ -796,8 +788,7 @@ let  isoler_variable (expr1, comparator, expr2) var_name env =
            | (Sign.Zero :: q, Ge) -> (aux comparator q) |> VAR_SIGN.add(Zero) |> VAR_SIGN.add(Pos)
 
            | (Sign.Neg :: q, Lt) | (Sign.Neg :: q, Le) -> (aux comparator q) |> VAR_SIGN.add(Neg)
-           | (Sign.Neg :: q, Gt) -> (aux comparator q) |> VAR_SIGN.add(Zero) |> VAR_SIGN.add(Pos)
-           | (Sign.Neg :: q, Ge) -> (aux comparator q) |> VAR_SIGN.add(Neg) |> VAR_SIGN.add(Zero) |> VAR_SIGN.add(Pos)
+           | (Sign.Neg :: q, Ge) | (Sign.Neg :: q, Gt) -> (aux comparator q) |> VAR_SIGN.add(Neg) |> VAR_SIGN.add(Zero) |> VAR_SIGN.add(Pos)
 
            | (Error :: q, _) -> aux comparator q
 
@@ -817,9 +808,10 @@ let  isoler_variable (expr1, comparator, expr2) var_name env =
          match reformat_expression expr1 signs var_name with 
            | (Num(a), _) -> failwith "Erreur : expression innatendue"
            | (Var(a), _) -> failwith "Erreur : expression innatendue"
+           | (Op(Mod, _, _), _) -> (Var(var_name), Eq, VAR_SIGN.(empty |> add Neg |> add Zero |> add Pos))
            | (Op(operator, sexpr1, sexpr2), nsigns) -> 
-               let possible = detect_sign sexpr2 env in 
-                 isoler (sexpr1, comparator, (combine_possibilities (operation_inverse operator) nsigns possible)) var_name
+               let possible = detect_sign sexpr2 env l in 
+                 isoler (sexpr1, comparator, (combine_possibilities (operation_inverse operator) nsigns possible l)) var_name
        )
   in let extract_constraint comparator signs env var_name = 
        let rec aux signs bsigns = 
@@ -856,16 +848,18 @@ let print_env_sign env =
   in pr (get_keys env)
 
 
-let sign_evaluate_condition (expr1, comparator, expr2) env_o =
+let sign_evaluate_condition (expr1, comparator, expr2) env_o l =
   let rec initialise_env condition env = 
     match condition with 
       | Num(a) -> env
-      | Var(name) -> ENV.add name (isoler_variable (expr1, comparator, expr2) name env_o) env
+      | Var(name) -> ENV.add name (isoler_variable (expr1, comparator, expr2) name env_o l) env
       | Op(operation, expr1, expr2) -> initialise_env expr2 (initialise_env (expr1) env)
   in ENV.union (fun key elm1 elm2 -> Some(elm2)) env_o (initialise_env expr2 (initialise_env expr1 ENV.empty)) 
 ;;
 
-
+let print_first_division_by_zero () = if !first_division_by_0 = (-1) then
+ print_string "\n\nAucun risque de division par zero !\n"
+ else (printf "\n\nRisque de division par zero à la ligne %d\n" (!first_division_by_0));;
 
 
 let check_sign prog =
@@ -880,17 +874,22 @@ let check_sign prog =
   in let rec interne prog env = match prog with 
        | [] -> env
        | (l, Read(name)) :: suite_prog -> interne suite_prog (ENV.add name VAR_SIGN.(empty |> add(Neg) |> add(Zero) |> add(Pos)) env)
-       | (l, Set(name, expr)) :: suite_prog -> interne suite_prog (ENV.add name (detect_sign expr env) env)
-       | (l, If(cond, block1, block2)) :: suite_prog -> interne suite_prog (merge_maps (interne block1 (sign_evaluate_condition cond env)) (interne block2 (sign_evaluate_condition (neg_condition cond) env)))
-       | (l, While(cond, block)) :: suite_prog -> interne suite_prog (interne block (sign_evaluate_condition (neg_condition cond) env))
+       | (l, Set(name, expr)) :: suite_prog -> interne suite_prog (ENV.add name (detect_sign expr env l) env)
+       | (l, If(cond, block1, block2)) :: suite_prog -> interne suite_prog (process_if cond block1 block2 env l)
+       | (l, While(cond, block)) :: suite_prog -> interne suite_prog (process_while cond block env env l)
        | (l, Print(expr)) :: suite_prog -> interne suite_prog env
-  and process_if cond blockIF blockELSE env = 
-    merge_maps (if (satisfaisable cond env) 
-                then (interne blockIF (sign_evaluate_condition cond env)) else ENV.empty) 
-      (if (satisfaisable (neg_condition cond)env) 
-       then (interne blockELSE (sign_evaluate_condition (neg_condition cond) env)) else ENV.empty)
+  and process_if cond blockIF blockELSE env l = 
+    let envIF = if (satisfaisable cond env l) then interne blockIF (sign_evaluate_condition cond env l) else ENV.empty
+    in let envELSE = if (satisfaisable (neg_condition cond) env l) then interne blockELSE (sign_evaluate_condition (neg_condition cond) env l) else ENV.empty
+    in merge_maps envIF envELSE
+  and process_while cond corp env env_o l =
+    let propage_cond = sign_evaluate_condition cond env l in
+    let propage_corp = interne corp propage_cond in
+    let propage_join = ENV.union (fun key elm1 elm2 -> Some(elm2)) env propage_corp in 
+      if ENV.equal (VAR_SIGN.equal) env propage_join then ENV.union (fun key elm1 elm2 -> Some(elm2)) propage_join (sign_evaluate_condition (neg_condition cond) env_o l)
+      else process_while cond corp propage_join env_o l
 
-  in print_env_sign (interne prog ENV.empty)
+  in print_env_sign (interne prog ENV.empty); print_first_division_by_zero ();;
 
 let usage () =
   print_string "Polish : analyse statique d'un mini-langage\n";
