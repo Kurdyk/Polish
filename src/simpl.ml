@@ -185,7 +185,7 @@ let simpl_polish (p:program) =
 
 
         | While(cond, block) -> let b, env = find_const block env_const [] true in (*Meme logique que pour le IF*)
-              match toujours_valide (simpl_cond_with_const cond (maj_env env_const env)) with 
+              match toujours_valide (simpl_cond_with_const cond env_const) with 
                 | None | Some(true) -> find_const
                                          t 
                                          (stability env_const env)
@@ -193,7 +193,7 @@ let simpl_polish (p:program) =
                                          in_while
                 | Some(false) -> find_const
                                    t 
-                                   (stability env_const env)
+                                   env_const
                                    acc
                                    in_while
 
